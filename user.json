@@ -1,0 +1,25 @@
+{
+  "user": {
+    "name": "John Doe",
+    "role": "user",
+    "email": "johndoe@example.com",
+    "active": true,
+    "preferences": {
+      "notifications": true,
+      "dailyReminder": true
+    },
+    "createdAt": "2025-01-01T10:00:00Z"
+  },
+  "goals": {
+    "daily": [
+      {"goal": "Use public transport", "status": "incomplete"},
+      {"goal": "Reduce water usage", "status": "complete"}
+    ],
+    "monthly": [
+      {"goal": "Install energy-efficient bulbs", "status": "incomplete"}
+    ],
+    "yearly": [
+      {"goal": "Switch to solar energy", "status": "incomplete"}
+    ]
+  }
+}
