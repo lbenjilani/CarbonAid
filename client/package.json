@@ -41,6 +41,7 @@
     ]
   },
   "devDependencies": {
+    "@types/estree": "^1.0.6",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
     "@types/react-router-dom": "^5.3.3",
