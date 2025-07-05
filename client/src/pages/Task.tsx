@@ -10,6 +10,9 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
+  Stack,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
@@ -29,22 +32,31 @@ const suggestedGoals: string[] = [
 ];
 
 const GoalColumn = ({ title }: { title: string }) => (
-  <Paper elevation={3} sx={{ p: 2, height: '100%', flex: 1 }}>
-    <Typography variant="h6" textAlign="center" mb={2}>
+  <Paper
+    elevation={3}
+    sx={{
+      p: 3,
+      flex: 1,
+      bgcolor: '#dcedc8',
+      borderRadius: 2,
+      boxShadow: 2,
+    }}
+  >
+    <Typography variant="h6" textAlign="center" mb={2} color="primary" fontWeight="bold">
       {title}
     </Typography>
     <List>
       {sampleGoals.map((goal, i) => (
-        <ListItem key={i}>
+        <ListItem key={i} disablePadding>
           <ListItemIcon>
-            <Checkbox />
+            <Checkbox sx={{ color: '#66bb6a' }} />
           </ListItemIcon>
           <ListItemText primary={goal} />
         </ListItem>
       ))}
     </List>
     <Box textAlign="center" mt={2}>
-      <Button variant="outlined" size="small">
+      <Button variant="contained" color="success">
         Add a goal
       </Button>
     </Box>
@@ -52,95 +64,60 @@ const GoalColumn = ({ title }: { title: string }) => (
 );
 
 const Task: React.FC = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#eaf5e1', display: 'flex', flexDirection: 'column' }}>
       <Header />
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Typography variant="h4" textAlign="center" fontWeight="bold" gutterBottom>
-          Your goals to mitigate your emissions
+          🌱 Your Goals to Mitigate Emissions
         </Typography>
 
         {/* Goals Columns */}
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: { xs: 'column', md: 'row' },
-            gap: 3,
-            mt: 2,
-            mb: 5,
-          }}
-        >
-          <GoalColumn title="Daily goals" />
-          <GoalColumn title="Monthly goals" />
-          <GoalColumn title="Yearly goals" />
-        </Box>
+        <Stack direction={isMobile ? 'column' : 'row'} spacing={3} mt={4} mb={5}>
+          <GoalColumn title="Daily Goals" />
+          <GoalColumn title="Monthly Goals" />
+          <GoalColumn title="Yearly Goals" />
+        </Stack>
 
         {/* Suggested Goals Section */}
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: { xs: 'column', md: 'row' },
-            gap: 3,
-            mt: 4,
-          }}
-        >
-          {/* Suggested Daily Goals */}
-          <Paper elevation={2} sx={{ flex: 1, p: 2, bgcolor: '#f1f8ec' }}>
-            <Typography variant="subtitle1" textAlign="center" gutterBottom>
-              Suggested Daily Goals
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {suggestedGoals.slice(0, 2).map((goal, index) => (
-                <Button
-                  key={`daily-${index}`}
-                  variant="outlined"
-                  sx={{ textTransform: 'none' }}
-                  endIcon={<span style={{ fontWeight: 'bold', fontSize: '20px' }}>+</span>}
-                >
-                  {goal}
-                </Button>
-              ))}
-            </Box>
-          </Paper>
-
-          {/* Suggested Monthly Goals */}
-          <Paper elevation={2} sx={{ flex: 1, p: 2, bgcolor: '#f1f8ec' }}>
-            <Typography variant="subtitle1" textAlign="center" gutterBottom>
-              Suggested Monthly Goals
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {suggestedGoals.slice(2, 4).map((goal, index) => (
-                <Button
-                  key={`monthly-${index}`}
-                  variant="outlined"
-                  sx={{ textTransform: 'none' }}
-                  endIcon={<span style={{ fontWeight: 'bold', fontSize: '20px' }}>+</span>}
-                >
-                  {goal}
-                </Button>
-              ))}
-            </Box>
-          </Paper>
-
-          {/* Suggested Yearly Goals */}
-          <Paper elevation={2} sx={{ flex: 1, p: 2, bgcolor: '#f1f8ec' }}>
-            <Typography variant="subtitle1" textAlign="center" gutterBottom>
-              Suggested Yearly Goals
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {suggestedGoals.slice(4).map((goal, index) => (
-                <Button
-                  key={`yearly-${index}`}
-                  variant="outlined"
-                  sx={{ textTransform: 'none' }}
-                  endIcon={<span style={{ fontWeight: 'bold', fontSize: '20px' }}>+</span>}
-                >
-                  {goal}
-                </Button>
-              ))}
-            </Box>
-          </Paper>
-        </Box>
+        <Stack direction={isMobile ? 'column' : 'row'} spacing={3}>
+          {[
+            { title: 'Suggested Daily Goals', items: suggestedGoals.slice(0, 2) },
+            { title: 'Suggested Monthly Goals', items: suggestedGoals.slice(2, 4) },
+            { title: 'Suggested Yearly Goals', items: suggestedGoals.slice(4) },
+          ].map(({ title, items }, index) => (
+            <Paper
+              key={index}
+              elevation={2}
+              sx={{ flex: 1, p: 3, bgcolor: '#f0f8e0', borderLeft: '5px solid #81c784' }}
+            >
+              <Typography variant="subtitle1" textAlign="center" fontWeight="bold" gutterBottom>
+                {title}
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {items.map((goal, idx) => (
+                  <Button
+                    key={idx}
+                    variant="outlined"
+                    sx={{
+                      textTransform: 'none',
+                      borderColor: '#81c784',
+                      color: '#388e3c',
+                      fontWeight: 'bold',
+                      '&:hover': { borderColor: '#66bb6a', bgcolor: '#e8f5e9' },
+                    }}
+                    endIcon={<span style={{ fontWeight: 'bold', fontSize: '20px' }}>+</span>}
+                  >
+                    {goal}
+                  </Button>
+                ))}
+              </Box>
+            </Paper>
+          ))}
+        </Stack>
       </Container>
       <Footer />
     </Box>
