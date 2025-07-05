@@ -95,7 +95,7 @@ const Home: React.FC = () => {
           >
             <Box width="100%" maxWidth={400}>
               {/* Logo */}
-              <Box display="flex" justifyContent="center" mb={2}>
+              <Box display="flex" justifyContent="center" mb={2} onClick={() => navigate('/')} sx={{ cursor: 'pointer' }}>
                 <img
                   src={Logo}
                   alt="CarbonAid Logo"
