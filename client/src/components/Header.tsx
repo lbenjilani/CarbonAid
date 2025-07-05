@@ -5,11 +5,17 @@ import {
   Typography,
   Box,
   Button,
+  IconButton,
   useMediaQuery,
   useTheme,
+  Tooltip,
 } from '@mui/material';
 import { useLocation, useNavigate } from 'react-router-dom';
-import Logo from '../assets/logo.png'; // Update the path as needed
+import Logo from '../assets/logo.png';
+import LogoutIcon from '@mui/icons-material/Logout';
+import PersonIcon from '@mui/icons-material/Person';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import NotificationsIcon from '@mui/icons-material/Notifications';
 
 const navItems = [
   { label: 'Dashboard', path: '/dashboard' },
@@ -26,16 +32,22 @@ const Header: React.FC = () => {
   return (
     <AppBar position="static" color="inherit" elevation={1} sx={{ mb: 2 }}>
       <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
-        {/* Logo */}
-        <Box display="flex" alignItems="center" sx={{ gap: 1 }}>
+        {/* Logo → dashboard */}
+        <Box
+          display="flex"
+          alignItems="center"
+          sx={{ gap: 1, cursor: 'pointer' }}
+          onClick={() => navigate('/dashboard')}
+        >
           <img src={Logo} alt="CarbonAid Logo" style={{ height: 40 }} />
           <Typography variant="h6" fontWeight="bold">
             CarbonAid
           </Typography>
         </Box>
 
-        {/* Navigation */}
-        <Box display="flex" gap={2}>
+        {/* Nav Buttons + Icons */}
+        <Box display="flex" gap={isMobile ? 1 : 2} alignItems="center">
+          {/* Nav Buttons */}
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
@@ -49,6 +61,32 @@ const Header: React.FC = () => {
               </Button>
             );
           })}
+
+          {/* Icons */}
+          <Tooltip title="Profile">
+            <IconButton onClick={() => console.log('Profile clicked')}>
+              <PersonIcon />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Notifications">
+            <IconButton onClick={() => console.log('Notifications clicked')}>
+              <NotificationsIcon />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Help">
+            <IconButton onClick={() => console.log('Help clicked')}>
+              <HelpOutlineIcon />
+            </IconButton>
+          </Tooltip>
+
+          {/* Logout Button */}
+          <Tooltip title="Logout">
+            <IconButton color="error" onClick={() => navigate('/')}>
+              <LogoutIcon />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Toolbar>
     </AppBar>
