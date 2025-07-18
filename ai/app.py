@@ -53,7 +53,7 @@ plt.tight_layout()
 plt.savefig(os.path.join(img_dir, "sector_record_count.png"), dpi=300)  # Save before showing
 plt.show()  # Show after saving
 
-# 🏷️ Category Count (Top 20)
+# 🏷️ Category Count (Top 20)    #higher risk of contributing in the following years
 plt.figure(figsize=(10, 6))
 df['TES category'].value_counts().head(20).plot(kind='barh')
 plt.title("Top 20 TES Categories")
@@ -88,3 +88,22 @@ top_changers = df[['TES sector', 'TES category', 'Mean_YoY_Change', 'Std_YoY_Cha
 
 print("\n📉 Top 10 Volatile Categories (High Std Dev in YoY):")
 print(top_changers)
+
+#Filter only 'electricity supply'
+elec_df = df[df["TES sector"] == "Electricity supply"]
+
+#Set year range
+years = list(map(str, range(1990, 2024)))
+
+#Plot
+plt.figure(figsize=(12, 6))
+for _, row in elec_df.iterrows():
+    plt.plot(years, row[years], label=row["TES category"])
+
+plt.title("Electricity Supply Emissions by Category")
+plt.xlabel("Year")
+plt.ylabel("MtCO2e")
+plt.legend(loc='upper right', bbox_to_anchor=(1.3, 1))
+plt.grid(True)
+plt.tight_layout()
+plt.show()
