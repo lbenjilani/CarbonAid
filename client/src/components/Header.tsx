@@ -29,6 +29,8 @@ const Header: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
+  
+
   return (
     <AppBar position="static" color="inherit" elevation={1} sx={{ mb: 2 }}>
       <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -37,7 +39,12 @@ const Header: React.FC = () => {
           display="flex"
           alignItems="center"
           sx={{ gap: 1, cursor: 'pointer' }}
-          onClick={() => navigate('/dashboard')}
+          onClick={() => {
+            localStorage.removeItem('token'); // ⛔ or sessionStorage.removeItem('token')
+            localStorage.removeItem('user');  // optional
+            navigate('/');
+            window.location.reload(); // optional: resets app state
+          }}
         >
           <img src={Logo} alt="CarbonAid Logo" style={{ height: 40 }} />
           <Typography variant="h6" fontWeight="bold">
@@ -83,7 +90,15 @@ const Header: React.FC = () => {
 
           {/* Logout Button */}
           <Tooltip title="Logout">
-            <IconButton color="error" onClick={() => navigate('/')}>
+            <IconButton
+              color="error"
+              onClick={() => {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                navigate('/');
+                window.location.reload();
+              }}
+            >
               <LogoutIcon />
             </IconButton>
           </Tooltip>

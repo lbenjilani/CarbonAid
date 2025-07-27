@@ -3,13 +3,19 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import { connectDB } from './db/db';
-import userRoutes from './routes/userRoutes'; // ✅ Added
+import userRoutes from './routes/userRoutes';
+import authRoutes from './routes/authRoutes';
+import ukGasRoutes from './routes/ukGasRoutes';
 
 dotenv.config({ path: './.env' });
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:3000',
+  credentials: true,
+}));
+
 app.use(bodyParser.json());
 
 connectDB()
@@ -40,6 +46,8 @@ app.post('/api/model', async (req: Request, res: Response) => {
 
 // ✅ Add User Routes
 app.use('/api', userRoutes);
+app.use('/api', authRoutes);
+app.use('/api', ukGasRoutes);
 
 // Start Server
 const PORT = process.env.PORT || 5000;

@@ -1,207 +1,220 @@
-import React from 'react';
+// Dashboard.tsx
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
-  Button,
-  Stack,
+  CssBaseline,
   useTheme,
   useMediaQuery,
-  CssBaseline,
-  Divider,
-  Paper,
-  Card,
-  CardContent,
-  CardHeader,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
+import Header from '../components/Header';
+import Footer from '../components/Footer';
+import AISuggestionsPanel from '../components/AISuggestionsPanel';
+import { ResponsiveSunburst } from '@nivo/sunburst';
 import {
-  PieChart,
-  Pie,
-  Cell,
   LineChart,
   Line,
   XAxis,
   YAxis,
-  Tooltip as ReTooltip,
-  Legend as ReLegend,
-  ResponsiveContainer,
   CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
 } from 'recharts';
-import Header from '../components/Header';
-import Footer from '../components/Footer';
 
-const pieData = [
-  { name: 'Transport', value: 3.2 },
-  { name: 'Home Energy', value: 2.4 },
-  { name: 'Food', value: 1.6 },
-  { name: 'Other', value: 1.2 },
+interface LinePoint {
+  year: string;
+  value: number;
+}
+
+interface PiePoint {
+  name: string;
+  value: number;
+}
+
+const API_BASE = 'http://localhost:5000';
+
+const colorPalette = [
+  '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+  '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
+  '#aec7e8', '#ffbb78', '#98df8a', '#ff9896', '#c5b0d5',
+  '#c49c94', '#f7b6d2', '#c7c7c7', '#dbdb8d', '#9edae5'
 ];
 
-const lineData = [
-  { report: 'Jan', value: 7.5 },
-  { report: 'Feb', value: 7.8 },
-  { report: 'Mar', value: 8.0 },
-  { report: 'Apr', value: 8.2 },
-  { report: 'May', value: 8.4 },
-];
+const convertToSunburstData = (flatData: { name: string; value: number }[]) => {
+  const grouped: Record<string, number> = {};
 
-const pieColors = ['#66bb6a', '#81c784', '#a5d6a7', '#c8e6c9'];
+  flatData.forEach(({ name, value }) => {
+    if (name === 'Total') return;
+    const [sector] = name.split(' - ');
+    grouped[sector] = (grouped[sector] || 0) + value;
+  });
+
+  const topSectors = Object.entries(grouped)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([sector]) => sector);
+
+  const root: any = { name: 'UK Emissions', children: [] };
+  let colorIndex = 0;
+
+  flatData.forEach(({ name, value }) => {
+    const [sector = 'Other', ...rest] = name.split(' - ');
+    if (!topSectors.includes(sector)) return;
+
+    const subsector = rest.join(' - ') || 'Other';
+
+    let sectorNode = root.children.find((c: any) => c.name === sector);
+    if (!sectorNode) {
+      sectorNode = { name: sector, children: [], color: colorPalette[colorIndex++ % colorPalette.length] };
+      root.children.push(sectorNode);
+    }
+
+    sectorNode.children.push({
+      name: subsector,
+      value,
+      color: colorPalette[colorIndex++ % colorPalette.length]
+    });
+  });
+
+  return root;
+};
 
 const Dashboard: React.FC = () => {
   const userName = 'John';
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [lineData, setLineData] = useState<LinePoint[]>([]);
+  const [pieData, setPieData] = useState<PiePoint[]>([]);
+  const [emissionCategories, setEmissionCategories] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('Power stations - coal');
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/ukgas/categories`)
+      .then(res => res.json())
+      .then(setEmissionCategories);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedCategory) return;
+
+    fetch(`${API_BASE}/api/ukgas/${encodeURIComponent(selectedCategory)}`)
+      .then(res => res.json())
+      .then(data => {
+        const line = data
+          .filter((d: any) => !isNaN(Number(d.year)))
+          .map((d: any) => ({
+            year: d.year,
+            value: typeof d.value === 'number' ? d.value : Number(d.value),
+          }));
+        setLineData(line);
+      });
+
+    fetch(`${API_BASE}/api/ukgas/latest-breakdown`)
+      .then(res => res.json())
+      .then((data: PiePoint[]) => {
+        setPieData(data.map(p => ({
+          name: p.name,
+          value: typeof p.value === 'number' ? p.value : Number(p.value),
+        })));
+      });
+  }, [selectedCategory]);
 
   return (
     <>
       <CssBaseline />
-
-      <Box
-        sx={{
-          minHeight: '100vh',
-          bgcolor: '#eaf5e1',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
+      <Box sx={{ minHeight: '100vh', bgcolor: '#eaf5e1', display: 'flex', flexDirection: 'column' }}>
         <Header />
 
         <Box
           sx={{
+            flex: 1,
             width: '100%',
-            maxWidth: 1280,
+            maxWidth: 1400,
             mx: 'auto',
-            flexGrow: 1,
+            p: 3,
             display: 'flex',
             flexDirection: isMobile ? 'column' : 'row',
-            p: 2,
             gap: 3,
-            overflowY: 'auto',
           }}
         >
-          {/* Main Content Left Side */}
-          <Box
-            sx={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              alignItems: 'center',
-              p: 4,
-              borderRadius: 2,
-            }}
-          >
+          {/* Left Charts Section */}
+          <Box flex={2}>
             <Typography variant="h4" fontWeight="bold" gutterBottom>
               Welcome, {userName}!
             </Typography>
-            <Typography variant="h6" color="text.secondary" gutterBottom>
-              Your dashboard to track and reduce carbon impact 🌱
+            <Typography variant="h6" color="text.secondary">
+              UK's Energy Emissions Dashboard
             </Typography>
 
-            <Box mt={4} mb={2} textAlign="center">
-              <Typography variant="h3" fontWeight="bold" color="primary">
-                8.4 tCO₂ / year
-              </Typography>
-              <Typography variant="caption" color="error">
-                2.4 tonnes above target
-              </Typography>
-            </Box>
+            <FormControl fullWidth sx={{ mt: 3 }}>
+              <InputLabel id="category-label">Emission Category</InputLabel>
+              <Select
+                labelId="category-label"
+                value={selectedCategory}
+                label="Emission Category"
+                onChange={(e) => setSelectedCategory(e.target.value)}
+              >
+                {emissionCategories.map((cat, idx) => (
+                  <MenuItem key={idx} value={cat}>
+                    {cat}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                  label
-                  isAnimationActive
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
-                  ))}
-                </Pie>
-                <ReTooltip />
-                <ReLegend />
-              </PieChart>
-            </ResponsiveContainer>
-
-            <Box width="100%" mt={5}>
-              <Typography variant="subtitle1" textAlign="center" mb={1}>
-                Emission Progress Over Time
+            <Box mt={4}>
+              <Typography variant="subtitle1" gutterBottom>
+                Emissions by Year ({selectedCategory})
               </Typography>
-              <ResponsiveContainer width="100%" height={200}>
+              <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={lineData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="report" />
-                  <YAxis label={{ value: 'tCO₂', angle: -90, position: 'insideLeft' }} />
-                  <ReTooltip />
-                  <ReLegend />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#66bb6a"
-                    strokeWidth={3}
-                    dot={{ r: 5 }}
-                    activeDot={{ r: 8 }}
-                    isAnimationActive
-                  />
+                  <XAxis dataKey="year" />
+                  <YAxis />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="value" stroke="#66bb6a" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             </Box>
+
+            <Box mt={6}>
+              <Typography variant="subtitle1" gutterBottom>
+                Emission Breakdown by Category (Latest Year)
+              </Typography>
+              <Box sx={{ height: 400 }}>
+                <ResponsiveSunburst
+                  data={convertToSunburstData(pieData)}
+                  margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
+                  id="name"
+                  value="value"
+                  cornerRadius={2}
+                  borderColor={{ theme: 'background' }}
+                  animate
+                  motionConfig="gentle"
+
+                  // 💡 These are now handled manually via data.color
+                  colors={node => node.data.color}
+                  childColor={undefined}
+
+                  arcLabel={d => d.id.toString()}
+                  arcLabelsSkipAngle={4}
+                  arcLabelsTextColor={{ from: 'color', modifiers: [['darker', 2.5]] }}
+
+                  tooltip={({ id, value }) => (
+                    <strong>{id}: {value}</strong>
+                  )}
+                />
+              </Box>
+            </Box>
           </Box>
 
-          {/* Sidebar Panel on Right */}
-          <Box
-            sx={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 3,
-              p: 3,
-              bgcolor: '#dcedc8',
-              borderRadius: 2,
-              boxShadow: 2,
-            }}
-          >
-            <Card sx={{ bgcolor: '#f0f8e0' }}>
-              <CardHeader title="Current Carbon Footprint" sx={{ textAlign: 'center' }} />
-              <CardContent>
-                <Typography variant="h4" align="center" fontWeight="bold">
-                  8.4 tCO₂
-                </Typography>
-              </CardContent>
-            </Card>
-
-            <Card sx={{ bgcolor: '#f0f8e0' }}>
-              <CardHeader title="Goal Carbon Footprint" sx={{ textAlign: 'center' }} />
-              <CardContent>
-                <Typography variant="h4" align="center" fontWeight="bold">
-                  6.0 tCO₂
-                </Typography>
-              </CardContent>
-            </Card>
-
-            <Card sx={{ bgcolor: '#f0f8e0' }}>
-              <CardHeader title="Suggestions" sx={{ textAlign: 'center' }} />
-              <CardContent>
-                <Typography variant="body1" gutterBottom>
-                  Here are some personalized tips:
-                </Typography>
-                <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
-                  <li>Use greener transportation</li>
-                  <li>Improve home insulation</li>
-                  <li>Adopt plant-based meals</li>
-                </ul>
-              </CardContent>
-            </Card>
-
-            <Box display="flex" justifyContent="flex-end">
-              <Button variant="contained" color="success" sx={{ fontWeight: 'bold' }}>
-                Recalculate Emission
-              </Button>
-            </Box>
+          {/* AI Panel */}
+          <Box flex={1}>
+            <AISuggestionsPanel />
           </Box>
         </Box>
 

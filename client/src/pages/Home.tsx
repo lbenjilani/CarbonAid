@@ -2,17 +2,13 @@ import React from 'react';
 import {
   Box,
   Typography,
-  TextField,
-  Button,
-  Stack,
-  Divider,
   useTheme,
   useMediaQuery,
   GlobalStyles,
 } from '@mui/material';
-import GoogleIcon from '@mui/icons-material/Google';
 import { useNavigate } from 'react-router-dom';
 import Logo from '../assets/logo.png';
+import AuthForm from '../components/AuthForm';
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
@@ -21,7 +17,6 @@ const Home: React.FC = () => {
 
   return (
     <>
-      {/* Prevent scrolling globally */}
       <GlobalStyles
         styles={{
           html: { overflow: 'hidden', height: '100%', width: '100%' },
@@ -29,7 +24,6 @@ const Home: React.FC = () => {
         }}
       />
 
-      {/* Fullscreen Centered & Scaled Box */}
       <Box
         sx={{
           width: '100vw',
@@ -95,7 +89,13 @@ const Home: React.FC = () => {
           >
             <Box width="100%" maxWidth={400}>
               {/* Logo */}
-              <Box display="flex" justifyContent="center" mb={2} onClick={() => navigate('/')} sx={{ cursor: 'pointer' }}>
+              <Box
+                display="flex"
+                justifyContent="center"
+                mb={2}
+                onClick={() => navigate('/')}
+                sx={{ cursor: 'pointer' }}
+              >
                 <img
                   src={Logo}
                   alt="CarbonAid Logo"
@@ -121,37 +121,7 @@ const Home: React.FC = () => {
                 Join the movement. Reduce your footprint. 🌿
               </Typography>
 
-              <Stack spacing={2}>
-                <TextField label="Email" fullWidth />
-                <TextField label="Password" type="password" fullWidth />
-
-                <Button
-                  variant="contained"
-                  fullWidth
-                  onClick={() => navigate('/dashboard')}
-                >
-                  Login
-                </Button>
-
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  onClick={() => navigate('/dashboard')}
-                >
-                  Sign Up
-                </Button>
-
-                <Divider>or</Divider>
-
-                <Button
-                  variant="outlined"
-                  startIcon={<GoogleIcon />}
-                  fullWidth
-                  onClick={() => navigate('/dashboard')}
-                >
-                  Continue with Google
-                </Button>
-              </Stack>
+              <AuthForm />
             </Box>
           </Box>
         </Box>

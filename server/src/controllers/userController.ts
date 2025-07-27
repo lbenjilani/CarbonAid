@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import UserModel from '../models/User';
 
 // Create a dummy user
-export const createUser = async (req: Request, res: Response) => {
+export const createUser = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, email, role } = req.body;
     const user = new UserModel({ name, email, role });
@@ -14,7 +14,7 @@ export const createUser = async (req: Request, res: Response) => {
 };
 
 // Get all users
-export const getUsers = async (_req: Request, res: Response) => {
+export const getUsers = async (_req: Request, res: Response): Promise<void> => {
   try {
     const users = await UserModel.find().lean();
     res.json(users);
@@ -24,10 +24,13 @@ export const getUsers = async (_req: Request, res: Response) => {
 };
 
 // Get one user by ID
-export const getUserById = async (req: Request, res: Response) => {
+export const getUserById = async (req: Request, res: Response): Promise<void> => {
   try {
     const user = await UserModel.findById(req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
     res.json(user);
   } catch (err) {
     res.status(500).json({ error: 'Error retrieving user', details: err });
@@ -35,7 +38,7 @@ export const getUserById = async (req: Request, res: Response) => {
 };
 
 // Delete user
-export const deleteUser = async (req: Request, res: Response) => {
+export const deleteUser = async (req: Request, res: Response): Promise<void> => {
   try {
     await UserModel.findByIdAndDelete(req.params.id);
     res.json({ message: 'User deleted' });
