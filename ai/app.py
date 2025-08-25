@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # 🗂️ Load & Clean
-df = pd.read_csv("ai/data/uk_gas.csv", sep=';')
+df = pd.read_csv("data/uk_gas.csv", sep=';')
 df.columns = df.columns.str.strip()
 year_cols = df.columns[3:]
 df[year_cols] = df[year_cols].apply(pd.to_numeric, errors='coerce')
