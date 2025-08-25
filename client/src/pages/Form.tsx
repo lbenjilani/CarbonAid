@@ -1,36 +1,72 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Container,
+  Grid,
+  Paper,
+  Box,
+  Chip,
+  LinearProgress,
+  List,
+  ListItemButton,
+  ListItemText,
+  Card,
+  CardHeader,
+  CardContent,
+  TextField,
+  Button,
+  IconButton,
+  Stack,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  CssBaseline,
+  ThemeProvider,
+  createTheme,
+  Divider,
+} from "@mui/material";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
+import NotificationsIcon from "@mui/icons-material/Notifications";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+import LogoutIcon from "@mui/icons-material/Logout";
 
-/**
- * CarbonAid | Footprint Quiz (TSX)
- * - Self-contained styles (same look & feel)
- * - Scroll spy with IntersectionObserver
- * - Progress tracking
- * - Local draft via localStorage
- * - Accessible ToC + sticky footer actions
- */
 const DRAFT_KEY = "carbonaid_quiz_draft_v1";
 
 type QuizFormData = Record<string, FormDataEntryValue>;
 
+const theme = createTheme({
+  palette: {
+    mode: "light",
+    primary: { main: "#2e7d32" }, // accent
+    background: { default: "#eaf5e1" }, // page bg
+  },
+  shape: { borderRadius: 12 },
+  typography: {
+    fontFamily: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial'].join(", "),
+  },
+  components: {
+    MuiPaper: { styleOverrides: { root: { borderRadius: 14 } } },
+    MuiCard: { styleOverrides: { root: { borderRadius: 14 } } },
+  },
+});
+
 const Form: React.FC = () => {
   const formRef = useRef<HTMLFormElement | null>(null);
-  const tocRef = useRef<HTMLDivElement | null>(null);
-  const barRef = useRef<HTMLSpanElement | null>(null);
-
   const [answeredCount, setAnsweredCount] = useState(0);
   const [totalInputs, setTotalInputs] = useState(0);
   const [activeSectionId, setActiveSectionId] = useState<string>("sec-basic");
   const [stepIndex, setStepIndex] = useState<number>(0);
-  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const year = new Date().getFullYear();
 
-  // helper: mock navigation to mirror Header.tsx behaviours
   const go = (path: string) => {
-    // Replace with your router navigate() if desired
-    // e.g., const navigate = useNavigate(); navigate(path)
+    // swap with useNavigate() if you wire React Router
     console.log("navigate to", path);
   };
 
-  // grab sections lazily from the form
+  // Section registration (preserve your data-title metadata)
   const sections = useMemo(() => {
     if (!formRef.current) return [] as HTMLElement[];
     return Array.from(
@@ -38,7 +74,6 @@ const Form: React.FC = () => {
     );
   }, [formRef.current]);
 
-  // compute section titles for ToC
   const sectionMeta = useMemo(
     () =>
       sections.map((s, idx) => ({
@@ -49,15 +84,12 @@ const Form: React.FC = () => {
     [sections]
   );
 
-  // load draft from localStorage into the form (once)
+  // Initial load: count inputs + restore draft
   useEffect(() => {
     if (!formRef.current) return;
-
-    // set total inputs
     const inputs = formRef.current.querySelectorAll("input, select");
     setTotalInputs(inputs.length);
 
-    // load draft
     const raw = localStorage.getItem(DRAFT_KEY);
     if (raw) {
       try {
@@ -73,17 +105,13 @@ const Form: React.FC = () => {
         console.warn("draft parse error", e);
       }
     }
-
-    // initial count
     countAnswered();
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formRef.current]);
 
-  // intersection observer for scroll spy
+  // Scroll spy
   useEffect(() => {
     if (sections.length === 0) return;
-
     const obs = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -97,17 +125,9 @@ const Form: React.FC = () => {
       },
       { rootMargin: "-40% 0px -55% 0px", threshold: 0 }
     );
-
     sections.forEach((s) => obs.observe(s));
     return () => obs.disconnect();
   }, [sections]);
-
-  // update progress bar width
-  useEffect(() => {
-    if (!barRef.current || totalInputs === 0) return;
-    const pct = Math.round((answeredCount / totalInputs) * 100);
-    barRef.current.style.width = `${pct}%`;
-  }, [answeredCount, totalInputs]);
 
   const countAnswered = () => {
     if (!formRef.current) return;
@@ -150,341 +170,408 @@ const Form: React.FC = () => {
     countAnswered();
   };
 
+  // Progress %
+  const progressPct = totalInputs ? Math.round((answeredCount / totalInputs) * 100) : 0;
+
   return (
-    <>
-      {/* Styles preserved from original */}
-      <style>{`
-        :root{
-          --ca-bg:#eaf5e1;
-          --ca-accent:#2e7d32;
-          --ca-accent-100:#cde8bd;
-          --ca-card:#ffffff;
-          --ca-text:#111827;
-          --ca-muted:#6b7280;
-          --ca-border:#e5e7eb;
-          --radius:14px;
-        }
-        *{box-sizing:border-box}
-        body:has(#CarbonFootprintQuizRoot){background:var(--ca-bg)}
-        .appbar{position:sticky;top:0;z-index:50;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.06)}
-        .toolbar{max-width:1100px;margin:auto;display:flex;align-items:center;justify-content:space-between;padding:10px 16px}
-        .brand{display:flex;align-items:center;gap:10px;cursor:pointer}
-        .brand-logo{width:40px;height:40px;border-radius:8px;background:linear-gradient(135deg,var(--ca-accent),#6cc27c);display:grid;place-items:center;color:white;font-weight:800}
-        .brand-title{font-weight:700}
-        .nav{display:flex;gap:6px}
-        .nav button{border:none;background:transparent;padding:8px 12px;border-radius:10px;cursor:pointer;font-weight:600}
-        .nav button.active{background:var(--ca-accent);color:#fff}
-        .actions{display:flex;align-items:center;gap:6px}
-        .icon-btn{border:none;background:transparent;padding:8px;border-radius:10px;cursor:pointer}
-        .icon-btn.danger{color:#b91c1c}
-        .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
-        .layout{display:grid;grid-template-columns:260px 1fr;gap:20px}
-        @media (max-width: 900px){.layout{grid-template-columns:1fr}}
-        .side{position:sticky;top:64px;align-self:start;background:var(--ca-card);border:1px solid var(--ca-border);border-radius:var(--radius);padding:16px}
-        .progress{height:10px;background:#f3f4f6;border-radius:999px;overflow:hidden;margin-top:6px}
-        .progress > span{display:block;height:100%;width:0;background:var(--ca-accent);transition:width .2s ease}
-        .toc{margin-top:12px;display:grid;gap:6px}
-        .toc a{padding:8px 10px;border-radius:10px;text-decoration:none;color:var(--ca-text);border:1px solid transparent}
-        .toc a.active{border-color:var(--ca-accent);background:#f0fdf4}
-        .card{background:var(--ca-card);border:1px solid var(--ca-border);border-radius:var(--radius);padding:18px}
-        .form-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px}
-        .form-title{font-size:20px;font-weight:700}
-        .pill{font-size:12px;color:#155e2b;background:#dcfce7;border-radius:999px;padding:4px 8px;font-weight:700}
-        .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-        @media (max-width: 700px){.grid{grid-template-columns:1fr}}
-        fieldset{border:1px dashed var(--ca-border);padding:14px;border-radius:12px}
-        legend{font-weight:700;color:var(--ca-accent)}
-        .q{display:grid;gap:4px}
-        label{font-weight:600}
-        .hint{font-size:12px;color:var(--ca-muted)}
-        input[type="text"], input[type="number"], select{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:10px}
-        .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-        .footer-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
-        .btn{border:none;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
-        .btn.outline{background:#fff;border:1px solid var(--ca-border)}
-        .btn.primary{background:var(--ca-accent);color:#fff}
-        .sticky-footer{position:sticky;bottom:0;background:rgba(255,255,255,.9);backdrop-filter:saturate(140%) blur(6px);border:1px solid var(--ca-border);border-radius:16px;padding:10px;display:flex;justify-content:space-between;align-items:center}
-        .site-footer{margin-top:32px;padding:16px 20px;background:var(--ca-accent-100);text-align:center;color:#374151;border-top:1px solid #dbe7d0}
-      `}</style>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      {/* Header */}
+      <AppBar elevation={1} color="inherit" position="sticky">
+        <Toolbar sx={{ maxWidth: 1100, mx: "auto", width: "100%" }}>
+          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ cursor: "pointer" }} onClick={() => go("/dashboard")}>
+            <Box
+              sx={{
+                width: 40,
+                height: 40,
+                borderRadius: 1.5,
+                background: "linear-gradient(135deg, #2e7d32, #6cc27c)",
+                display: "grid",
+                placeItems: "center",
+                color: "white",
+                fontWeight: 800,
+              }}
+            >
+              CA
+            </Box>
+            <Typography variant="h6" fontWeight={700}>CarbonAid</Typography>
+          </Stack>
 
-      <div id="CarbonFootprintQuizRoot">
-        {/* Header */}
-        <header className="appbar" role="banner">
-          <div className="toolbar">
-            <div className="brand" onClick={() => go("/dashboard")} role="button" tabIndex={0}>
-              <div className="brand-logo" aria-hidden>CA</div>
-              <div className="brand-title">CarbonAid</div>
-            </div>
-            <nav className="nav" aria-label="Primary">
-              <button className="active" onClick={() => go("/dashboard")}>Dashboard</button>
-              <button onClick={() => go("/report")}>Report</button>
-              <button onClick={() => go("/task")}>Task</button>
-            </nav>
-            <div className="actions">
-              <button className="icon-btn" title="Profile" aria-label="Profile">👤</button>
-              <button className="icon-btn" title="Notifications" aria-label="Notifications">🔔</button>
-              <button className="icon-btn" title="Help" aria-label="Help">❔</button>
-              <button className="icon-btn danger" title="Logout" aria-label="Logout" onClick={() => go("/")}>⎋</button>
-            </div>
-          </div>
-        </header>
+          <Stack direction="row" spacing={1.5} sx={{ ml: "auto", mr: 2 }}>
+            <Button variant="contained" size="small" color="primary" onClick={() => go("/dashboard")}>Dashboard</Button>
+            <Button size="small" onClick={() => go("/report")}>Report</Button>
+            <Button size="small" onClick={() => go("/task")}>Task</Button>
+          </Stack>
 
-        <main className="wrap">
-          <div className="layout">
-            {/* Sidebar */}
-            <aside className="side" aria-labelledby="quiz-progress-title">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                <div>
-                  <div id="quiz-progress-title" style={{ fontWeight: 700 }}>Quiz Progress</div>
-                  <div className="hint">
-                    <span>{answeredCount}</span>/<span>{totalInputs}</span> answered
-                  </div>
-                </div>
-                <span className="pill">Step {stepIndex + 1} of {Math.max(sections.length, 1)}</span>
-              </div>
-              <div className="progress" aria-hidden><span ref={barRef} /></div>
-              <nav className="toc" ref={tocRef} aria-label="On this page">
-                {sectionMeta.map(({ id, title, idx }) => (
-                  <a
+          <Stack direction="row" spacing={1}>
+            <IconButton aria-label="Profile"><AccountCircleIcon /></IconButton>
+            <IconButton aria-label="Notifications"><NotificationsIcon /></IconButton>
+            <IconButton aria-label="Help"><HelpOutlineIcon /></IconButton>
+            <IconButton aria-label="Logout" color="error" onClick={() => go("/")}>
+              <LogoutIcon />
+            </IconButton>
+          </Stack>
+        </Toolbar>
+      </AppBar>
+
+      <Container maxWidth="lg" sx={{ py: 3 }}>
+        <Grid container spacing={2}>
+          {/* Sidebar */}
+          <Grid item xs={12} md={4} lg={3}>
+            <Paper elevation={0} variant="outlined" sx={{ position: "sticky", top: 88, p: 2 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+                <Box>
+                  <Typography fontWeight={700}>Quiz Progress</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {answeredCount}/{totalInputs} answered
+                  </Typography>
+                </Box>
+                <Chip
+                  color="success"
+                  variant="outlined"
+                  label={`Step ${stepIndex + 1} of ${Math.max(sections.length, 1)}`}
+                  sx={{ fontWeight: 700 }}
+                />
+              </Stack>
+
+              <Box sx={{ mt: 1 }}>
+                <LinearProgress
+                  variant="determinate"
+                  value={progressPct}
+                  sx={{ height: 10, borderRadius: 5, backgroundColor: "#f3f4f6" }}
+                />
+              </Box>
+
+              <List dense sx={{ mt: 1 }}>
+                {sectionMeta.map(({ id, title }) => (
+                  <ListItemButton
                     key={id}
-                    href={`#${id}`}
-                    className={activeSectionId === id ? "active" : undefined}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    selected={activeSectionId === id}
+                    onClick={() =>
+                      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })
+                    }
+                    sx={{
+                      borderRadius: 2,
+                      "&.Mui-selected": {
+                        border: "1px solid",
+                        borderColor: "primary.main",
+                        backgroundColor: "success.50",
+                      },
                     }}
                   >
-                    {idx + 1}. {title}
-                  </a>
+                    <ListItemText primary={title} />
+                  </ListItemButton>
                 ))}
-              </nav>
-            </aside>
+              </List>
+            </Paper>
+          </Grid>
 
-            {/* Form Card */}
-            <section className="card" aria-labelledby="quiz-title">
-              <div className="form-header">
-                <div id="quiz-title" className="form-title">Carbon Footprint Questionnaire</div>
-                <span className="pill">Most recent will be shown first</span>
-              </div>
+          {/* Main Form */}
+          <Grid item xs={12} md={8} lg={9}>
+            <Card variant="outlined">
+              <CardHeader
+                title="Carbon Footprint Questionnaire"
+                action={<Chip color="success" variant="outlined" label="Most recent will be shown first" />}
+                sx={{ "& .MuiCardHeader-title": { fontWeight: 700 } }}
+              />
+              <Divider />
+              <CardContent>
+                <Box component="form" ref={formRef} onInput={handleInput} onSubmit={handleSubmit} noValidate>
 
-              <form ref={formRef} onInput={handleInput} onSubmit={handleSubmit} noValidate>
-                {/* BASIC INFO */}
-                <section id="sec-basic" data-title="Basic Info" className="grid">
-                  <fieldset className="q">
-                    <legend>Basic Info</legend>
-                    <div className="q">
-                      <label htmlFor="householdSize">Household size</label>
-                      <input id="householdSize" name="householdSize" type="number" min={1} placeholder="e.g. 3" required />
-                      <div className="hint">Number of people regularly living in your home.</div>
-                    </div>
-                    <div className="q">
-                      <label htmlFor="postcode">Postcode / City</label>
-                      <input id="postcode" name="postcode" type="text" placeholder="e.g. SW1A 1AA or Tunis" required />
-                    </div>
-                  </fieldset>
-                  <fieldset className="q">
-                    <legend>Timeframe</legend>
-                    <div className="q">
-                      <label htmlFor="period">Reporting period</label>
-                      <select id="period" name="period" required>
-                        <option value="">Select…</option>
-                        <option>Last 30 days</option>
-                        <option>Last 90 days</option>
-                        <option>Last 12 months</option>
-                      </select>
-                      <div className="hint">Used to normalise your results and compare reports over time.</div>
-                    </div>
-                  </fieldset>
-                </section>
+                  {/* BASIC INFO */}
+                  <Box id="sec-basic" data-title="Basic Info" sx={{ mb: 3 }}>
+                    <Typography variant="h6" color="primary" fontWeight={700} sx={{ mb: 1 }}>
+                      Basic Info
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <TextField
+                          id="householdSize"
+                          name="householdSize"
+                          type="number"
+                          label="Household size"
+                          placeholder="e.g. 3"
+                          inputProps={{ min: 1 }}
+                          required
+                          fullWidth
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          Number of people regularly living in your home.
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <TextField
+                          id="postcode"
+                          name="postcode"
+                          label="Postcode / City"
+                          placeholder="e.g. SW1A 1AA or Tunis"
+                          required
+                          fullWidth
+                        />
+                      </Grid>
 
-                {/* TRANSPORTATION */}
-                <section id="sec-transport" data-title="Transportation" className="grid">
-                  <fieldset className="q">
-                    <legend>Personal Car</legend>
-                    <div className="q">
-                      <label htmlFor="carFuel">Fuel type</label>
-                      <select id="carFuel" name="carFuel" required>
-                        <option value="">Select…</option>
-                        <option>Petrol</option>
-                        <option>Diesel</option>
-                        <option>Hybrid</option>
-                        <option>Electric</option>
-                      </select>
-                    </div>
-                    <div className="row">
-                      <div className="q" style={{ flex: "1 1 140px" }}>
-                        <label htmlFor="carKm">Distance driven</label>
-                        <input id="carKm" name="carKm" type="number" min={0} placeholder="km in period" required />
-                      </div>
-                      <div className="q" style={{ flex: "1 1 140px" }}>
-                        <label htmlFor="carEfficiency">Efficiency</label>
-                        <input id="carEfficiency" name="carEfficiency" type="number" min={0} step={0.1} placeholder="L/100km or kWh/100km" />
-                        <div className="hint">Leave blank if unknown.</div>
-                      </div>
-                    </div>
-                  </fieldset>
-                  <fieldset className="q">
-                    <legend>Public Transport & Flights</legend>
-                    <div className="row">
-                      <div className="q" style={{ flex: "1 1 160px" }}>
-                        <label htmlFor="busKm">Bus / Coach (km)</label>
-                        <input id="busKm" name="busKm" type="number" min={0} placeholder="e.g. 120" />
-                      </div>
-                      <div className="q" style={{ flex: "1 1 160px" }}>
-                        <label htmlFor="railKm">Rail / Metro (km)</label>
-                        <input id="railKm" name="railKm" type="number" min={0} placeholder="e.g. 320" />
-                      </div>
-                    </div>
-                    <div className="row">
-                      <div className="q" style={{ flex: "1 1 160px" }}>
-                        <label htmlFor="shortFlights">Short-haul flights</label>
-                        <input id="shortFlights" name="shortFlights" type="number" min={0} placeholder="# flights" />
-                      </div>
-                      <div className="q" style={{ flex: "1 1 160px" }}>
-                        <label htmlFor="longFlights">Long-haul flights</label>
-                        <input id="longFlights" name="longFlights" type="number" min={0} placeholder="# flights" />
-                      </div>
-                    </div>
-                  </fieldset>
-                </section>
+                      <Grid item xs={12} md={6}>
+                        <FormControl fullWidth>
+                          <InputLabel id="period-label">Reporting period</InputLabel>
+                          <Select
+                            labelId="period-label"
+                            id="period"
+                            name="period"
+                            label="Reporting period"
+                            required
+                            defaultValue=""
+                          >
+                            <MenuItem value=""><em>Select…</em></MenuItem>
+                            <MenuItem value="Last 30 days">Last 30 days</MenuItem>
+                            <MenuItem value="Last 90 days">Last 90 days</MenuItem>
+                            <MenuItem value="Last 12 months">Last 12 months</MenuItem>
+                          </Select>
+                        </FormControl>
+                        <Typography variant="caption" color="text.secondary">
+                          Used to normalise your results and compare reports over time.
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Box>
 
-                {/* HOME ENERGY */}
-                <section id="sec-energy" data-title="Home Energy" className="grid">
-                  <fieldset className="q">
-                    <legend>Electricity</legend>
-                    <div className="row">
-                      <div className="q" style={{ flex: "1 1 160px" }}>
-                        <label htmlFor="elecKwh">Usage (kWh)</label>
-                        <input id="elecKwh" name="elecKwh" type="number" min={0} placeholder="e.g. 220" />
-                      </div>
-                      <div className="q" style={{ flex: "1 1 160px" }}>
-                        <label htmlFor="tariff">Tariff / supplier</label>
-                        <input id="tariff" name="tariff" type="text" placeholder="optional" />
-                      </div>
-                    </div>
-                    <div className="q">
-                      <label htmlFor="solar">Do you have solar?</label>
-                      <select id="solar" name="solar">
-                        <option value="">Select…</option>
-                        <option>None</option>
-                        <option>Solar PV (roof)</option>
-                        <option>Community solar</option>
-                      </select>
-                    </div>
-                  </fieldset>
-                  <fieldset className="q">
-                    <legend>Heating</legend>
-                    <div className="q">
-                      <label htmlFor="heatType">Primary heating type</label>
-                      <select id="heatType" name="heatType">
-                        <option value="">Select…</option>
-                        <option>Natural Gas</option>
-                        <option>Heating Oil</option>
-                        <option>Electric (Heat Pump)</option>
-                        <option>Electric (Resistive)</option>
-                        <option>District Heating</option>
-                        <option>Biomass</option>
-                      </select>
-                    </div>
-                    <div className="row">
-                      <div className="q" style={{ flex: "1 1 160px" }}>
-                        <label htmlFor="gasKwh">Gas / Heat kWh</label>
-                        <input id="gasKwh" name="gasKwh" type="number" min={0} placeholder="kWh in period" />
-                      </div>
-                      <div className="q" style={{ flex: "1 1 160px" }}>
-                        <label htmlFor="homeArea">Home size (m²)</label>
-                        <input id="homeArea" name="homeArea" type="number" min={0} placeholder="e.g. 85" />
-                      </div>
-                    </div>
-                  </fieldset>
-                </section>
+                  {/* TRANSPORTATION */}
+                  <Box id="sec-transport" data-title="Transportation" sx={{ mb: 3 }}>
+                    <Typography variant="h6" color="primary" fontWeight={700} sx={{ mb: 1 }}>
+                      Transportation
+                    </Typography>
+                    <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
+                        Personal Car
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={6}>
+                          <FormControl fullWidth>
+                            <InputLabel id="carFuel-label">Fuel type</InputLabel>
+                            <Select labelId="carFuel-label" id="carFuel" name="carFuel" label="Fuel type" required defaultValue="">
+                              <MenuItem value=""><em>Select…</em></MenuItem>
+                              <MenuItem value="Petrol">Petrol</MenuItem>
+                              <MenuItem value="Diesel">Diesel</MenuItem>
+                              <MenuItem value="Hybrid">Hybrid</MenuItem>
+                              <MenuItem value="Electric">Electric</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField id="carKm" name="carKm" type="number" label="Distance driven" placeholder="km in period" inputProps={{ min: 0 }} required fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField id="carEfficiency" name="carEfficiency" type="number" label="Efficiency" placeholder="L/100km or kWh/100km" inputProps={{ min: 0, step: 0.1 }} fullWidth />
+                          <Typography variant="caption" color="text.secondary">Leave blank if unknown.</Typography>
+                        </Grid>
+                      </Grid>
+                    </Paper>
 
-                {/* DIET */}
-                <section id="sec-diet" data-title="Diet" className="grid">
-                  <fieldset className="q">
-                    <legend>Diet Pattern</legend>
-                    <div className="q">
-                      <label htmlFor="dietType">Typical diet</label>
-                      <select id="dietType" name="dietType">
-                        <option value="">Select…</option>
-                        <option>Omnivore (meat daily)</option>
-                        <option>Reduced-meat (few times/week)</option>
-                        <option>Pescatarian</option>
-                        <option>Vegetarian</option>
-                        <option>Vegan</option>
-                      </select>
-                    </div>
-                    <div className="row">
-                      <div className="q" style={{ flex: "1 1 160px" }}>
-                        <label htmlFor="eatingOut">Meals out / week</label>
-                        <input id="eatingOut" name="eatingOut" type="number" min={0} placeholder="e.g. 2" />
-                      </div>
-                      <div className="q" style={{ flex: "1 1 160px" }}>
-                        <label htmlFor="foodWaste">Food wasted / week (kg)</label>
-                        <input id="foodWaste" name="foodWaste" type="number" step={0.1} min={0} placeholder="e.g. 0.6" />
-                      </div>
-                    </div>
-                  </fieldset>
-                  <fieldset className="q">
-                    <legend>Groceries</legend>
-                    <div className="q">
-                      <label htmlFor="localShare">% local / seasonal</label>
-                      <input id="localShare" name="localShare" type="number" min={0} max={100} placeholder="0–100" />
-                    </div>
-                    <div className="q">
-                      <label htmlFor="organicShare">% organic</label>
-                      <input id="organicShare" name="organicShare" type="number" min={0} max={100} placeholder="0–100" />
-                    </div>
-                  </fieldset>
-                </section>
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
+                        Public Transport & Flights
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={6}>
+                          <TextField id="busKm" name="busKm" type="number" label="Bus / Coach (km)" placeholder="e.g. 120" inputProps={{ min: 0 }} fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField id="railKm" name="railKm" type="number" label="Rail / Metro (km)" placeholder="e.g. 320" inputProps={{ min: 0 }} fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField id="shortFlights" name="shortFlights" type="number" label="Short-haul flights" placeholder="# flights" inputProps={{ min: 0 }} fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField id="longFlights" name="longFlights" type="number" label="Long-haul flights" placeholder="# flights" inputProps={{ min: 0 }} fullWidth />
+                        </Grid>
+                      </Grid>
+                    </Paper>
+                  </Box>
 
-                {/* CONSUMPTION & WASTE */}
-                <section id="sec-consumption" data-title="Consumption & Waste" className="grid">
-                  <fieldset className="q">
-                    <legend>Purchases</legend>
-                    <div className="q">
-                      <label htmlFor="clothesItems">Clothing items bought / month</label>
-                      <input id="clothesItems" name="clothesItems" type="number" min={0} placeholder="e.g. 3" />
-                    </div>
-                    <div className="q">
-                      <label htmlFor="electronicsSpend">Electronics spend in period (currency)</label>
-                      <input id="electronicsSpend" name="electronicsSpend" type="number" min={0} placeholder="e.g. 250" />
-                    </div>
-                  </fieldset>
-                  <fieldset className="q">
-                    <legend>Waste</legend>
-                    <div className="q">
-                      <label htmlFor="recycleRate">Recycling rate (%)</label>
-                      <input id="recycleRate" name="recycleRate" type="number" min={0} max={100} placeholder="0–100" />
-                    </div>
-                    <div className="q">
-                      <label htmlFor="trashKg">General waste / week (kg)</label>
-                      <input id="trashKg" name="trashKg" type="number" min={0} step={0.1} placeholder="e.g. 3.2" />
-                    </div>
-                  </fieldset>
-                </section>
+                  {/* HOME ENERGY */}
+                  <Box id="sec-energy" data-title="Home Energy" sx={{ mb: 3 }}>
+                    <Typography variant="h6" color="primary" fontWeight={700} sx={{ mb: 1 }}>
+                      Home Energy
+                    </Typography>
+                    <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
+                        Electricity
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={6}>
+                          <TextField id="elecKwh" name="elecKwh" type="number" label="Usage (kWh)" placeholder="e.g. 220" inputProps={{ min: 0 }} fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField id="tariff" name="tariff" label="Tariff / supplier" placeholder="optional" fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <FormControl fullWidth>
+                            <InputLabel id="solar-label">Do you have solar?</InputLabel>
+                            <Select labelId="solar-label" id="solar" name="solar" label="Do you have solar?" defaultValue="">
+                              <MenuItem value=""><em>Select…</em></MenuItem>
+                              <MenuItem value="None">None</MenuItem>
+                              <MenuItem value="Solar PV (roof)">Solar PV (roof)</MenuItem>
+                              <MenuItem value="Community solar">Community solar</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                      </Grid>
+                    </Paper>
 
-                {/* Sticky actions (Save / Submit) */}
-                <div className="sticky-footer">
-                  <div className="hint">Your inputs auto-save in this browser as a draft.</div>
-                  <div className="footer-actions">
-                    <button type="button" className="btn outline" onClick={handleClearDraft}>
-                      Clear draft
-                    </button>
-                    <button type="submit" className="btn primary">
-                      Submit quiz
-                    </button>
-                  </div>
-                </div>
-              </form>
-            </section>
-          </div>
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
+                        Heating
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={6}>
+                          <FormControl fullWidth>
+                            <InputLabel id="heatType-label">Primary heating type</InputLabel>
+                            <Select labelId="heatType-label" id="heatType" name="heatType" label="Primary heating type" defaultValue="">
+                              <MenuItem value=""><em>Select…</em></MenuItem>
+                              <MenuItem value="Natural Gas">Natural Gas</MenuItem>
+                              <MenuItem value="Heating Oil">Heating Oil</MenuItem>
+                              <MenuItem value="Electric (Heat Pump)">Electric (Heat Pump)</MenuItem>
+                              <MenuItem value="Electric (Resistive)">Electric (Resistive)</MenuItem>
+                              <MenuItem value="District Heating">District Heating</MenuItem>
+                              <MenuItem value="Biomass">Biomass</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField id="gasKwh" name="gasKwh" type="number" label="Gas / Heat kWh" placeholder="kWh in period" inputProps={{ min: 0 }} fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField id="homeArea" name="homeArea" type="number" label="Home size (m²)" placeholder="e.g. 85" inputProps={{ min: 0 }} fullWidth />
+                        </Grid>
+                      </Grid>
+                    </Paper>
+                  </Box>
 
-          {/* App Footer */}
-          <footer className="site-footer">© <span>{year}</span> CarbonAid. All rights reserved.</footer>
-        </main>
-      </div>
-    </>
+                  {/* DIET */}
+                  <Box id="sec-diet" data-title="Diet" sx={{ mb: 3 }}>
+                    <Typography variant="h6" color="primary" fontWeight={700} sx={{ mb: 1 }}>
+                      Diet
+                    </Typography>
+                    <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
+                        Diet Pattern
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={6}>
+                          <FormControl fullWidth>
+                            <InputLabel id="dietType-label">Typical diet</InputLabel>
+                            <Select labelId="dietType-label" id="dietType" name="dietType" label="Typical diet" defaultValue="">
+                              <MenuItem value=""><em>Select…</em></MenuItem>
+                              <MenuItem value="Omnivore (meat daily)">Omnivore (meat daily)</MenuItem>
+                              <MenuItem value="Reduced-meat (few times/week)">Reduced-meat (few times/week)</MenuItem>
+                              <MenuItem value="Pescatarian">Pescatarian</MenuItem>
+                              <MenuItem value="Vegetarian">Vegetarian</MenuItem>
+                              <MenuItem value="Vegan">Vegan</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField id="eatingOut" name="eatingOut" type="number" label="Meals out / week" placeholder="e.g. 2" inputProps={{ min: 0 }} fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField id="foodWaste" name="foodWaste" type="number" label="Food wasted / week (kg)" placeholder="e.g. 0.6" inputProps={{ min: 0, step: 0.1 }} fullWidth />
+                        </Grid>
+                      </Grid>
+                    </Paper>
+
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
+                        Groceries
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={6}>
+                          <TextField id="localShare" name="localShare" type="number" label="% local / seasonal" placeholder="0–100" inputProps={{ min: 0, max: 100 }} fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField id="organicShare" name="organicShare" type="number" label="% organic" placeholder="0–100" inputProps={{ min: 0, max: 100 }} fullWidth />
+                        </Grid>
+                      </Grid>
+                    </Paper>
+                  </Box>
+
+                  {/* CONSUMPTION & WASTE */}
+                  <Box id="sec-consumption" data-title="Consumption & Waste" sx={{ mb: 3 }}>
+                    <Typography variant="h6" color="primary" fontWeight={700} sx={{ mb: 1 }}>
+                      Consumption & Waste
+                    </Typography>
+                    <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
+                        Purchases
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={6}>
+                          <TextField id="clothesItems" name="clothesItems" type="number" label="Clothing items bought / month" placeholder="e.g. 3" inputProps={{ min: 0 }} fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField id="electronicsSpend" name="electronicsSpend" type="number" label="Electronics spend in period (currency)" placeholder="e.g. 250" inputProps={{ min: 0 }} fullWidth />
+                        </Grid>
+                      </Grid>
+                    </Paper>
+
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
+                        Waste
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={6}>
+                          <TextField id="recycleRate" name="recycleRate" type="number" label="Recycling rate (%)" placeholder="0–100" inputProps={{ min: 0, max: 100 }} fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField id="trashKg" name="trashKg" type="number" label="General waste / week (kg)" placeholder="e.g. 3.2" inputProps={{ min: 0, step: 0.1 }} fullWidth />
+                        </Grid>
+                      </Grid>
+                    </Paper>
+                  </Box>
+
+                  {/* Sticky footer actions */}
+                  <Paper
+                    elevation={0}
+                    variant="outlined"
+                    sx={{
+                      position: "sticky",
+                      bottom: 16,
+                      p: 1.5,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      backdropFilter: "saturate(140%) blur(6px)",
+                      backgroundColor: "rgba(255,255,255,.9)",
+                    }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      Your inputs auto-save in this browser as a draft.
+                    </Typography>
+                    <Stack direction="row" spacing={1}>
+                      <Button variant="outlined" onClick={handleClearDraft}>Clear draft</Button>
+                      <Button variant="contained" type="submit">Submit quiz</Button>
+                    </Stack>
+                  </Paper>
+                </Box>
+              </CardContent>
+            </Card>
+
+            {/* Footer */}
+            <Paper
+              elevation={0}
+              sx={{
+                mt: 3,
+                p: 2,
+                textAlign: "center",
+                color: "#374151",
+                border: "1px solid #dbe7d0",
+                backgroundColor: "#cde8bd",
+              }}
+            >
+              © {year} CarbonAid. All rights reserved.
+            </Paper>
+          </Grid>
+        </Grid>
+      </Container>
+    </ThemeProvider>
   );
 };
 
