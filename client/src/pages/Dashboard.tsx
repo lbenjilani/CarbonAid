@@ -1,5 +1,9 @@
 // Dashboard.tsx
+import { askGPT } from '../services/chatService';
 import React, { useState, useEffect } from 'react';
+
+
+
 import {
   Box,
   Typography,
@@ -88,6 +92,16 @@ const Dashboard: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [lineData, setLineData] = useState<LinePoint[]>([]);
+  const [gptReply, setGptReply] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleGenerateSuggestions = async () => {
+  setLoading(true);
+  const reply = await askGPT("Suggest 3 ways to reduce carbon emissions based on the data.");
+  setGptReply(reply);
+  setLoading(false);
+};
+
   const [pieData, setPieData] = useState<PiePoint[]>([]);
   const [emissionCategories, setEmissionCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('Power stations - coal');
@@ -213,9 +227,19 @@ const Dashboard: React.FC = () => {
           </Box>
 
           {/* AI Panel */}
-          <Box flex={1}>
-            <AISuggestionsPanel />
+          <Box mt={3}>
+            <Typography variant="h6">AI Suggestions</Typography>
+            <button onClick={handleGenerateSuggestions} disabled={loading}>
+              {loading ? 'Loading...' : 'Generate Suggestions'}
+            </button>
+
+            {gptReply && (
+              <Box mt={2} p={2} bgcolor="#fff" borderRadius={2}>
+                <Typography variant="body1">{gptReply}</Typography>
           </Box>
+  )}
+</Box>
+
         </Box>
 
         <Footer />
