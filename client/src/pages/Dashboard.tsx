@@ -1,9 +1,6 @@
-// Dashboard.tsx
-import { askGPT } from '../services/chatService';
+// src/pages/Dashboard.tsx
 import React, { useState, useEffect } from 'react';
-
-
-
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -14,6 +11,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Paper,
+  Button,
 } from '@mui/material';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
@@ -39,7 +38,9 @@ interface PiePoint {
   value: number;
 }
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000';
+const DEV_USER_ID =
+  (process.env.REACT_APP_DEV_USER_ID || '66e000000000000000000001').trim();
 
 const colorPalette = [
   '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
@@ -69,7 +70,8 @@ const convertToSunburstData = (flatData: { name: string; value: number }[]) => {
     const [sector = 'Other', ...rest] = name.split(' - ');
     if (!topSectors.includes(sector)) return;
 
-    const subsector = rest.join(' - ') || 'Other';
+    const subsectorRaw = rest.join(' - ') || 'Other';
+    const subsector = `${sector} - ${subsectorRaw}`; // ensure uniqueness for child ids/keys
 
     let sectorNode = root.children.find((c: any) => c.name === sector);
     if (!sectorNode) {
@@ -80,44 +82,85 @@ const convertToSunburstData = (flatData: { name: string; value: number }[]) => {
     sectorNode.children.push({
       name: subsector,
       value,
-      color: colorPalette[colorIndex++ % colorPalette.length]
+      color: colorPalette[colorIndex++ % colorPalette.length],
     });
   });
 
   return root;
 };
 
+
 const Dashboard: React.FC = () => {
-  const userName = 'John';
+  const userName = 'John'; // replace with real auth context when ready
+  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  // Data
   const [lineData, setLineData] = useState<LinePoint[]>([]);
-  const [gptReply, setGptReply] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleGenerateSuggestions = async () => {
-  setLoading(true);
-  const reply = await askGPT("Suggest 3 ways to reduce carbon emissions based on the data.");
-  setGptReply(reply);
-  setLoading(false);
-};
-
   const [pieData, setPieData] = useState<PiePoint[]>([]);
   const [emissionCategories, setEmissionCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('Power stations - coal');
 
+  // Gatekeeping
+  const [checkingSubmission, setCheckingSubmission] = useState(true);
+  const [hasSubmission, setHasSubmission] = useState<boolean>(false);
+
+  // 1) Check if user has filled the quiz (DB)
   useEffect(() => {
-    fetch(`${API_BASE}/api/ukgas/categories`)
-      .then(res => res.json())
-      .then(setEmissionCategories);
+    void (async () => {
+      try {
+        setCheckingSubmission(true);
+        const res = await fetch(`${API_BASE}/api/quiz/latest`, {
+          headers: { 'x-user-id': DEV_USER_ID }
+        });
+        const latest = await res.json();
+        setHasSubmission(Boolean(latest));
+      } catch (e) {
+        console.error('quiz/latest failed:', e);
+        setHasSubmission(false);
+      } finally {
+        setCheckingSubmission(false);
+      }
+    })();
   }, []);
 
+  // 2) If no submission, auto-redirect to form after a brief notice
   useEffect(() => {
+    if (checkingSubmission) return;
+    if (hasSubmission) return;
+
+    const t = setTimeout(() => {
+      navigate('/quiz'); // <-- your quiz form route
+    }, 2000);
+
+    return () => { clearTimeout(t); };
+  }, [checkingSubmission, hasSubmission, navigate]);
+
+  // 3) Load categories only if we have a submission
+  useEffect(() => {
+    if (!hasSubmission) return;
+
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/ukgas/categories`);
+        const cats = await res.json();
+        setEmissionCategories(cats);
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+  }, [hasSubmission]);
+
+  // 4) Load charts only if we have a submission and a selected category
+  useEffect(() => {
+    if (!hasSubmission) return;
     if (!selectedCategory) return;
 
-    fetch(`${API_BASE}/api/ukgas/${encodeURIComponent(selectedCategory)}`)
-      .then(res => res.json())
-      .then(data => {
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/ukgas/${encodeURIComponent(selectedCategory)}`);
+        const data = await res.json();
         const line = data
           .filter((d: any) => !isNaN(Number(d.year)))
           .map((d: any) => ({
@@ -125,22 +168,25 @@ const Dashboard: React.FC = () => {
             value: typeof d.value === 'number' ? d.value : Number(d.value),
           }));
         setLineData(line);
-      });
 
-    fetch(`${API_BASE}/api/ukgas/latest-breakdown`)
-      .then(res => res.json())
-      .then((data: PiePoint[]) => {
-        setPieData(data.map(p => ({
+        const res2 = await fetch(`${API_BASE}/api/ukgas/latest-breakdown`);
+        const pieRaw: PiePoint[] = await res2.json();
+        setPieData(pieRaw.map(p => ({
           name: p.name,
           value: typeof p.value === 'number' ? p.value : Number(p.value),
         })));
-      });
-  }, [selectedCategory]);
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+  }, [hasSubmission, selectedCategory]);
+
+  const showBlockingOverlay = !checkingSubmission && !hasSubmission;
 
   return (
     <>
       <CssBaseline />
-      <Box sx={{ minHeight: '100vh', bgcolor: '#eaf5e1', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ minHeight: '100vh', bgcolor: '#eaf5e1', display: 'flex', flexDirection: 'column', position: 'relative' }}>
         <Header />
 
         <Box
@@ -153,10 +199,54 @@ const Dashboard: React.FC = () => {
             display: 'flex',
             flexDirection: isMobile ? 'column' : 'row',
             gap: 3,
+            position: 'relative',
           }}
         >
-          {/* Left Charts Section */}
-          <Box flex={2}>
+          {/* Overlay if user hasn't submitted */}
+          {showBlockingOverlay && (
+            <Paper
+              elevation={3}
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                zIndex: 10,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                bgcolor: 'rgba(234,245,225,0.9)',
+                p: 3,
+                textAlign: 'center',
+              }}
+            >
+              <Box>
+                <Typography variant="h5" fontWeight={700} gutterBottom>
+                  Complete the carbon quiz to unlock your dashboard
+                </Typography>
+                <Typography color="text.secondary" sx={{ mb: 2 }}>
+                  We couldn’t find a submission for your account. You’ll be redirected to the form in a moment…
+                </Typography>
+                <Button
+                  variant="contained"
+                  color="success"
+                  onClick={() => navigate('/quiz')}
+                >
+                  Go to Quiz Now
+                </Button>
+              </Box>
+            </Paper>
+          )}
+
+          {/* Left Charts Section (blur/disable when blocked) */}
+          <Box
+            flex={2}
+            sx={{
+              filter: showBlockingOverlay ? 'blur(4px)' : 'none',
+              pointerEvents: showBlockingOverlay ? 'none' : 'auto',
+              userSelect: showBlockingOverlay ? 'none' : 'auto',
+              transition: 'filter 150ms ease',
+            }}
+            aria-hidden={showBlockingOverlay ? true : undefined}
+          >
             <Typography variant="h4" fontWeight="bold" gutterBottom>
               Welcome, {userName}!
             </Typography>
@@ -170,7 +260,8 @@ const Dashboard: React.FC = () => {
                 labelId="category-label"
                 value={selectedCategory}
                 label="Emission Category"
-                onChange={(e) => setSelectedCategory(e.target.value)}
+                onChange={(e) => setSelectedCategory(e.target.value as string)}
+                disabled={!hasSubmission}
               >
                 {emissionCategories.map((cat, idx) => (
                   <MenuItem key={idx} value={cat}>
@@ -209,15 +300,12 @@ const Dashboard: React.FC = () => {
                   borderColor={{ theme: 'background' }}
                   animate
                   motionConfig="gentle"
-
-                  // 💡 These are now handled manually via data.color
-                  colors={node => node.data.color}
+                  // colors supplied by node.data.color
+                  colors={(node: any) => node.data.color}
                   childColor={undefined}
-
-                  arcLabel={d => d.id.toString()}
+                  arcLabel={(d: any) => d.id.toString()}
                   arcLabelsSkipAngle={4}
                   arcLabelsTextColor={{ from: 'color', modifiers: [['darker', 2.5]] }}
-
                   tooltip={({ id, value }) => (
                     <strong>{id}: {value}</strong>
                   )}
@@ -226,20 +314,20 @@ const Dashboard: React.FC = () => {
             </Box>
           </Box>
 
-          {/* AI Panel */}
-          <Box mt={3}>
-            <Typography variant="h6">AI Suggestions</Typography>
-            <button onClick={handleGenerateSuggestions} disabled={loading}>
-              {loading ? 'Loading...' : 'Generate Suggestions'}
-            </button>
-
-            {gptReply && (
-              <Box mt={2} p={2} bgcolor="#fff" borderRadius={2}>
-                <Typography variant="body1">{gptReply}</Typography>
+          {/* AI Suggestions Panel (also blurred when blocked) */}
+          <Box
+            mt={3}
+            sx={{
+              filter: showBlockingOverlay ? 'blur(4px)' : 'none',
+              pointerEvents: showBlockingOverlay ? 'none' : 'auto',
+              userSelect: showBlockingOverlay ? 'none' : 'auto',
+              transition: 'filter 150ms ease',
+              minWidth: isMobile ? '100%' : 360,
+            }}
+            aria-hidden={showBlockingOverlay ? true : undefined}
+          >
+            <AISuggestionsPanel />
           </Box>
-  )}
-</Box>
-
         </Box>
 
         <Footer />

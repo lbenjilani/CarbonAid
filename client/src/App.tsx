@@ -5,7 +5,7 @@ import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import Report from './pages/Report';
 import Task from './pages/Task';
-import Form from './pages/Form';
+import Quiz from './pages/Quiz';
 
 const App: React.FC = () => {
   return (
@@ -17,7 +17,7 @@ const App: React.FC = () => {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/report" element={<Report />} />
           <Route path="/task" element={<Task />} />
-          <Route path="/form" element={<Form />} />
+          <Route path="/quiz" element={<Quiz />} />
         </Routes>
       </Router>
     </>
