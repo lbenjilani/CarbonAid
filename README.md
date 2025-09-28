@@ -1,68 +1,91 @@
+# CarbonAid 🌍
 
-# MERNBase
+CarbonAid is a full‑stack web app to measure, visualize, and reduce
+household carbon emissions.
 
-This project is a MERN Stack Template designed to provide a ready-to-use boilerplate for building full-stack web applications using MongoDB, Express, React, and Node.js. It serves as a foundation for developers to kickstart their projects without the hassle of setting up folder structures, installing dependencies, or configuring essential tools.
+## Features
 
----
+### Frontend (React + MUI + TS)
 
-# Who is this for?
-- Developers looking for a pre-configured MERN stack setup to save time and streamline the initial development process.
-- Students or learners who want a simple and structured starting point for practicing full-stack development.
-- Teams or freelancers building scalable web applications with React for the frontend and Node.js for the backend.
+-   **Quiz**: Multi‑section form (transport, energy, diet, consumption).
+    Autosaves, shows progress, submits to backend.
+-   **Dashboard**: Gated until quiz submission. Shows UK energy charts
+    (line + sunburst) and personalized AI suggestions.
+-   **AI Suggestions Panel**: Calls `/api/chat` (OpenRouter) with quiz
+    data + system prompt. Results are persisted so users see the latest
+    tips without regenerating.
+-   **Report Page**: Visualizes quiz submission: donut breakdown, bar
+    chart of top drivers, inputs summary, recalc button back to Quiz.
+-   **Consistent Design**: Green color palette, sticky sidebar, "Back to
+    Dashboard" navigation.
 
-## **Prerequisites**
+### Backend (Express + TS + MongoDB)
 
-Before you begin, ensure you have the following installed on your machine:
+-   **Quiz Routes**:
+    -   `POST /api/quiz` -- save new submission (sections + meta).
+    -   `GET /api/quiz/latest` -- fetch latest submission for a user.
+-   **Chat Routes**:
+    -   `POST /api/chat` -- proxy to OpenRouter API (GPT‑4o‑mini by
+        default).
+-   **UK Gas Routes** (demo): serve emissions categories + timeseries
+    data.
+-   **Error Handling**: Async wrapper + standardized JSON errors.
+-   **Persistence**: AI suggestions saved in DB per user (optional).
 
-- [Node.js](https://nodejs.org/) (version 14.x or above)
-- [npm](https://www.npmjs.com/) (Node Package Manager)
-- [MongoDB Atlas](https://www.mongodb.com/atlas/database) or a local MongoDB instance
-- [Git](https://git-scm.com/)
+## Setup
 
----
+### Requirements
 
-## **Setup Instructions**
+-   Node.js 18+
+-   MongoDB (local or Atlas)
 
-### 1. Clone the repository:
-```bash
-git clone <repository-url>
-cd <repository-name>
-```
+### Server
 
-### 2. Navigate to folder directory and Install Dependencies (for both Client and Server)
-```bash
-cd <repository-name>
-```
-```bash
+``` bash
+cd server
 npm install
+cp .env.example .env   # fill in values
+npm run dev
 ```
 
-### 4. Create .env file in root folder
-```bash
-MONGO_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/mydatabase?retryWrites=true&w=majority
+`.env`:
 
-```
+    MONGO_URI=mongodb://localhost:27017/carbonaid
+    PORT=5000
+    OPENROUTER_API_KEY=your_key_here
+    OPENROUTER_MODEL=openai/gpt-4o-mini
+    OPENROUTER_SITE_URL=http://localhost:3000
+    OPENROUTER_APP_NAME=CarbonAid
 
----
+### Client
 
-## **Run the Application**
-
-### 1. Start the Server
-```bash
+``` bash
+cd client
+npm install
+cp .env.example .env
 npm start
 ```
 
-### 2. Access the API
-```bash
-http://localhost:5000
-```
+`client/.env`:
 
-### 3. Start the Client
-```bash
-npm start
-```
+    REACT_APP_API_BASE=http://localhost:5000
+    REACT_APP_DEV_USER_ID=66e000000000000000000001
 
-### 2. Access the API
-```bash
-http://localhost:3000
-```
+## Development Notes
+
+-   Wrap all async Express handlers in `wrapAsync` to avoid unhandled
+    rejections.
+-   Use `void` prefix in React effects/handlers for fire‑and‑forget
+    async calls.
+-   Quiz autosaves to `localStorage`; submitting clears draft and
+    redirects to dashboard.
+-   Report page dynamically computes values from latest quiz.
+
+## Commit Message Example
+
+See [`commit-msg.md`](./commit-msg.md) for the detailed breakdown of
+this feature integration.
+
+------------------------------------------------------------------------
+
+MIT License © 2025 Herdy Cen
