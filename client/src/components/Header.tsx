@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+// src/components/Header.tsx
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -18,6 +19,8 @@ import {
   Menu,
   MenuItem,
   Badge,
+  ListItemIcon,
+  Chip,
 } from '@mui/material';
 import { useLocation, useNavigate, Link as RouterLink } from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -29,6 +32,11 @@ import DashboardCustomizeRoundedIcon from '@mui/icons-material/DashboardCustomiz
 import AssignmentTurnedInRoundedIcon from '@mui/icons-material/AssignmentTurnedInRounded';
 import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded';
 import PersonIcon from '@mui/icons-material/Person';
+import EmailRoundedIcon from '@mui/icons-material/EmailRounded';
+import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded';
+import CheckRoundedIcon from '@mui/icons-material/CheckRounded';
+import TaskAltRoundedIcon from '@mui/icons-material/TaskAltRounded';
+import BoltRoundedIcon from '@mui/icons-material/BoltRounded';
 import Logo from '../assets/logo.png';
 
 const navItems = [
@@ -36,6 +44,15 @@ const navItems = [
   { label: 'Report',    path: '/report',    icon: <AssessmentRoundedIcon fontSize="small" /> },
   { label: 'Task',      path: '/task',      icon: <AssignmentTurnedInRoundedIcon fontSize="small" /> },
 ];
+
+type NotificationItem = {
+  id: string;
+  title: string;
+  body?: string;
+  ts: number;        // epoch ms
+  read?: boolean;
+  type?: 'ai' | 'task' | 'system';
+};
 
 function getInitials(name?: string) {
   if (!name) return 'U';
@@ -45,6 +62,22 @@ function getInitials(name?: string) {
   return (first + last || first).toUpperCase();
 }
 
+function loadNotifications(): NotificationItem[] {
+  try {
+    const raw = localStorage.getItem('notifications');
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveNotifications(arr: NotificationItem[]) {
+  localStorage.setItem('notifications', JSON.stringify(arr));
+}
+
+const SUPPORT_EMAIL = 'support@carbonaid.app';
+
 const Header: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -53,6 +86,43 @@ const Header: React.FC = () => {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [userMenuEl, setUserMenuEl] = useState<null | HTMLElement>(null);
+  const [helpMenuEl, setHelpMenuEl] = useState<null | HTMLElement>(null);
+  const [notifMenuEl, setNotifMenuEl] = useState<null | HTMLElement>(null);
+
+  const [copied, setCopied] = useState(false);
+
+  // Notifications state (live)
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() => loadNotifications());
+
+  // Keep in sync across tabs/windows and when AISuggestionsPanel writes to localStorage
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'notifications') {
+        setNotifications(loadNotifications());
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // Light polling in case same tab writes (no storage event)
+  useEffect(() => {
+    const t = setInterval(() => {
+      setNotifications(loadNotifications());
+    }, 1500);
+    return () => clearInterval(t);
+  }, []);
+
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.read).length,
+    [notifications]
+  );
+
+  const markAllRead = useCallback(() => {
+    const next = notifications.map((n) => ({ ...n, read: true }));
+    setNotifications(next);
+    saveNotifications(next);
+  }, [notifications]);
 
   const user = useMemo(() => {
     try {
@@ -72,7 +142,6 @@ const Header: React.FC = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     navigate('/');
-    // Optional hard reload to clear any in-memory state:
     window.location.reload();
   };
 
@@ -108,7 +177,8 @@ const Header: React.FC = () => {
         sx={{
           mb: 2,
           backdropFilter: 'saturate(180%) blur(6px)',
-          backgroundColor: 'rgba(255,255,255,0.85)',
+          backgroundColor: 'rgba(240, 250, 237, 0.92)',
+          borderBottom: '1px solid rgba(117,183,141,0.25)',
         }}
       >
         <Toolbar sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
@@ -130,31 +200,136 @@ const Header: React.FC = () => {
 
           {/* Right: Actions */}
           <Box display="flex" alignItems="center" gap={0.5}>
-            {/* Help */}
-            <Tooltip title="Help & Docs">
+            {/* Help (menu) */}
+            <Tooltip title="Help">
               <IconButton
                 size="small"
                 color="inherit"
-                onClick={() => navigate('/help')}
                 aria-label="Help"
+                onClick={(e) => setHelpMenuEl(e.currentTarget)}
               >
                 <HelpOutlineIcon />
               </IconButton>
             </Tooltip>
 
-            {/* Notifications */}
+            <Menu
+              anchorEl={helpMenuEl}
+              open={Boolean(helpMenuEl)}
+              onClose={() => setHelpMenuEl(null)}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              PaperProps={{ elevation: 3, sx: { mt: 1 } }}
+            >
+              <MenuItem
+                component="a"
+                href={`mailto:${SUPPORT_EMAIL}`}
+                onClick={() => setHelpMenuEl(null)}
+              >
+                <ListItemIcon><EmailRoundedIcon fontSize="small" /></ListItemIcon>
+                Contact {SUPPORT_EMAIL}
+              </MenuItem>
+              <MenuItem
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(SUPPORT_EMAIL);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1200);
+                  } catch {}
+                }}
+              >
+                <ListItemIcon>
+                  {copied ? <CheckRoundedIcon fontSize="small" color="success" /> : <ContentCopyRoundedIcon fontSize="small" />}
+                </ListItemIcon>
+                {copied ? 'Copied!' : 'Copy email'}
+              </MenuItem>
+            </Menu>
+
+            {/* Notifications (menu) */}
             <Tooltip title="Notifications">
               <IconButton
                 size="small"
                 color="inherit"
                 aria-label="Notifications"
-                onClick={() => navigate('/notifications')}
+                onClick={(e) => {
+                  setNotifMenuEl(e.currentTarget);
+                  // mark as read when opening
+                  if (unreadCount > 0) {
+                    setTimeout(() => markAllRead(), 50);
+                  }
+                }}
               >
-                <Badge badgeContent={3} color="error" overlap="circular">
+                <Badge badgeContent={unreadCount} color="error" overlap="circular">
                   <NotificationsIcon />
                 </Badge>
               </IconButton>
             </Tooltip>
+
+            <Menu
+              anchorEl={notifMenuEl}
+              open={Boolean(notifMenuEl)}
+              onClose={() => setNotifMenuEl(null)}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              PaperProps={{ elevation: 3, sx: { mt: 1, width: 320, maxHeight: 400 } }}
+            >
+              <Box px={2} pt={1} pb={0.5} display="flex" alignItems="center" justifyContent="space-between">
+                <Typography variant="subtitle2" fontWeight={800}>Notifications</Typography>
+                {unreadCount > 0 && (
+                  <Chip size="small" color="error" label={`${unreadCount} new`} />
+                )}
+              </Box>
+              <Divider sx={{ my: 1 }} />
+              {notifications.length === 0 ? (
+                <Box px={2} py={3}>
+                  <Typography variant="body2" color="text.secondary">
+                    No notifications yet.
+                  </Typography>
+                </Box>
+              ) : (
+                notifications
+                  .slice(0, 15)
+                  .map((n) => (
+                    <MenuItem
+                      key={n.id}
+                      onClick={() => setNotifMenuEl(null)}
+                      sx={{ alignItems: 'flex-start', gap: 1 }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 32 }}>
+                        {n.type === 'ai' ? (
+                          <BoltRoundedIcon fontSize="small" color="warning" />
+                        ) : n.type === 'task' ? (
+                          <TaskAltRoundedIcon fontSize="small" color="success" />
+                        ) : (
+                          <NotificationsIcon fontSize="small" color="action" />
+                        )}
+                      </ListItemIcon>
+                      <Box>
+                        <Typography variant="body2" fontWeight={700}>
+                          {n.title}
+                        </Typography>
+                        {n.body && (
+                          <Typography variant="caption" color="text.secondary">
+                            {n.body}
+                          </Typography>
+                        )}
+                        <Typography variant="caption" sx={{ display: 'block', color: 'text.disabled', mt: 0.25 }}>
+                          {new Date(n.ts).toLocaleString()}
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  ))
+              )}
+              {notifications.length > 0 && (
+                <>
+                  <Divider sx={{ my: 1 }} />
+                  <Box px={1.5} pb={1.5}>
+                    <Button size="small" fullWidth variant="outlined" onClick={() => { saveNotifications([]); setNotifications([]); }}>
+                      Clear all
+                    </Button>
+                  </Box>
+                </>
+              )}
+            </Menu>
 
             {/* User menu */}
             <Tooltip title={userName}>
@@ -272,7 +447,7 @@ const Header: React.FC = () => {
             size="small"
             variant="outlined"
             startIcon={<HelpOutlineIcon />}
-            onClick={() => { setDrawerOpen(false); navigate('/help'); }}
+            onClick={() => { setDrawerOpen(false); setHelpMenuEl(document.body as any); }}
             sx={{ mb: 1 }}
           >
             Help

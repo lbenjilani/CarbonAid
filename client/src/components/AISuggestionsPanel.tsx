@@ -1,3 +1,4 @@
+// src/components/AISuggestionsPanel.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
@@ -139,7 +140,8 @@ const EarthLoader: React.FC = () => (
         width: 72,
         height: 72,
         borderRadius: '50%',
-        background: 'radial-gradient(circle at 35% 30%, #7ec8a3 25%, #2d8555 26% 40%, #7ec8a3 41% 55%, #2d8555 56% 70%, #7ec8a3 71%)',
+        background:
+          'radial-gradient(circle at 35% 30%, #7ec8a3 25%, #2d8555 26% 40%, #7ec8a3 41% 55%, #2d8555 56% 70%, #7ec8a3 71%)',
         boxShadow: 'inset -8px -10px 16px rgba(0,0,0,0.15), 0 0 0 4px rgba(117,183,141,0.35)',
         position: 'relative',
         animation: 'spin 5s linear infinite',
@@ -193,7 +195,7 @@ const SuggestionCard = React.memo(function SuggestionCard({
           in={expanded}
           unmountOnExit
           sx={{
-            // keep width stable by reserving scrollbar gutter
+            // keep width stable by reserving gutter even when scrollbar appears
             scrollbarGutter: 'stable both-edges',
           }}
         >
@@ -247,6 +249,23 @@ const AISuggestionsPanel: React.FC = () => {
     []
   );
 
+  const pushAiNotification = useCallback((count: number) => {
+    try {
+      const arr = JSON.parse(localStorage.getItem('notifications') || '[]');
+      arr.unshift({
+        id: `ai-${Date.now()}`,
+        title: 'AI suggestions ready',
+        body: `${count} new action${count === 1 ? '' : 's'} generated.`,
+        ts: Date.now(),
+        read: false,
+        type: 'ai',
+      });
+      localStorage.setItem('notifications', JSON.stringify(arr.slice(0, 50)));
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const handleGenerate = useCallback(
     async (opts?: { force?: boolean }) => {
       const now = Date.now();
@@ -254,7 +273,9 @@ const AISuggestionsPanel: React.FC = () => {
       clickLockRef.current = now;
 
       if (abortRef.current) {
-        try { abortRef.current.abort(); } catch {}
+        try {
+          abortRef.current.abort();
+        } catch {}
       }
       const ac = new AbortController();
       abortRef.current = ac;
@@ -305,11 +326,11 @@ const AISuggestionsPanel: React.FC = () => {
         setExpandedIndex(0); // open first item after fresh generate
 
         // Persist to server
-        await api.post(
-          '/api/ai-suggestions',
-          { tips },
-          { headers: { 'x-user-id': DEV_USER_ID } }
-        );
+        await api.post('/api/ai-suggestions', { tips }, { headers: { 'x-user-id': DEV_USER_ID } });
+
+        // 🔔 notify header
+        pushAiNotification(tips.length);
+
         setToast('Suggestions updated.');
       } catch (e: any) {
         if (e?.code !== 'ERR_CANCELED') {
@@ -321,7 +342,7 @@ const AISuggestionsPanel: React.FC = () => {
         setLoading(false);
       }
     },
-    [lastQuizHash, suggestions.length]
+    [lastQuizHash, suggestions.length, pushAiNotification]
   );
 
   const header = useMemo(
@@ -350,131 +371,99 @@ const AISuggestionsPanel: React.FC = () => {
   );
 
   return (
-    <Card
-      sx={{
-        borderRadius: 3,
-        boxShadow: '0 6px 24px rgba(46,125,50,0.08)',
-        p: 2,
-        minHeight: 300,
-        flex: 1,
-        maxHeight: 640,
-        display: 'flex',
-        flexDirection: 'column',
-        // soft green surface (no pure white)
-        bgcolor: '#f3faef',
-        border: '1px solid rgba(117,183,141,0.35)',
-      }}
-    >
-      <CardContent
+    <>
+      <Card
         sx={{
-          flex: 1,
+          bgcolor: '#f3faef',
+          borderRadius: 3,
+          border: '1px solid rgba(117,183,141,0.35)',
+          boxShadow: '0 6px 24px rgba(46,125,50,0.08)',
+          p: 1.5,
+          minHeight: 300,
+          maxHeight: 600,
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden',
-          p: 0,
         }}
       >
-        <Box sx={{ px: 1 }}>
+        <CardContent
+          sx={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
           {header}
-          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1.5 }}>
-            Personalized emission-reduction strategies based on your latest quiz.
-          </Typography>
 
-          <Stack direction="row" spacing={1.25} sx={{ mb: 1 }}>
-            <Button
-              onClick={() => void handleGenerate()}
-              variant="contained"
-              startIcon={<AutorenewIcon />}
-              disabled={loading}
-              sx={{
-                bgcolor: '#2e7d32',
-                '&:hover': { bgcolor: '#1b5e20' },
-                borderRadius: 2,
-                fontWeight: 800,
-                textTransform: 'none',
-                px: 2.25,
-              }}
-            >
-              {loading ? 'Generating…' : suggestions.length ? 'Regenerate' : 'Generate'}
-            </Button>
+          <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+            <Tooltip title="Generate from your latest quiz responses">
+              <span>
+                <Button
+                  onClick={() => void handleGenerate()}
+                  variant="contained"
+                  disabled={loading}
+                  startIcon={<AutorenewIcon />}
+                  sx={{ bgcolor: '#2e7d32', '&:hover': { bgcolor: '#1b5e20' } }}
+                >
+                  {loading ? 'Working…' : suggestions.length ? 'Regenerate' : 'Generate'}
+                </Button>
+              </span>
+            </Tooltip>
             {suggestions.length > 0 && (
-              <Tooltip title="Bypass freshness check (always fetch a new set)">
+              <Tooltip title="Force a fresh run even if nothing changed">
                 <span>
-                  <Button
-                    onClick={() => void handleGenerate({ force: true })}
-                    variant="outlined"
-                    disabled={loading}
-                    sx={{
-                      borderColor: '#2e7d32',
-                      color: '#1f7a3a',
-                      fontWeight: 800,
-                      textTransform: 'none',
-                      borderRadius: 2,
-                    }}
-                  >
+                  <Button onClick={() => void handleGenerate({ force: true })} variant="outlined" disabled={loading}>
                     Force
                   </Button>
                 </span>
               </Tooltip>
             )}
           </Stack>
-        </Box>
 
-        <Divider sx={{ borderColor: 'rgba(117,183,141,0.25)', mb: 1 }} />
+          {error && (
+            <Alert severity="error" sx={{ mb: 1 }}>
+              {error}
+            </Alert>
+          )}
 
-        {error && (
-          <Alert severity="error" sx={{ mx: 1, mb: 1, borderRadius: 2 }}>
-            {error}
-          </Alert>
-        )}
+          {loading ? (
+            <EarthLoader />
+          ) : (
+            <Box
+              sx={{
+                flex: 1,
+                overflowY: 'auto',
+                pr: 1,
+                // 👇 keep width stable when vertical scrollbar appears/disappears
+                scrollbarGutter: 'stable both-edges',
+              }}
+            >
+              {suggestions.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  Click “Generate” to get personalized, high-impact actions to cut your emissions.
+                </Typography>
+              ) : (
+                <Stack spacing={1.25}>
+                  {suggestions.map((s, i) => (
+                    <SuggestionCard
+                      key={`${s.title}-${i}`}
+                      s={s}
+                      i={i}
+                      expanded={expandedIndex === i}
+                      toggle={(idx) => setExpandedIndex((cur) => (cur === idx ? null : idx))}
+                    />
+                  ))}
+                </Stack>
+              )}
+            </Box>
+          )}
+        </CardContent>
+      </Card>
 
-        {loading ? (
-          <EarthLoader />
-        ) : (
-          <Box
-            sx={{
-              flex: 1,
-              overflowY: 'scroll',
-              pr: 1,
-              // keep width stable (no wobble when showing/hiding details)
-              scrollbarGutter: 'stable both-edges',
-            }}
-          >
-            {suggestions.length === 0 ? (
-              <Box
-                sx={{
-                  display: 'grid',
-                  placeItems: 'center',
-                  height: 160,
-                  color: 'text.secondary',
-                  border: '1px dashed rgba(117,183,141,0.45)',
-                  borderRadius: 2,
-                  mx: 1,
-                  bgcolor: '#f7fff3',
-                }}
-              >
-                <Typography variant="body2">Click Generate to get personalized actions.</Typography>
-              </Box>
-            ) : (
-              <Stack spacing={1.25} sx={{ px: 1 }}>
-                {suggestions.map((s, i) => (
-                  <SuggestionCard
-                    key={`${s.title}-${i}`}
-                    s={s}
-                    i={i}
-                    expanded={expandedIndex === i}
-                    toggle={toggleExpand}
-                  />
-                ))}
-              </Stack>
-            )}
-          </Box>
-        )}
-      </CardContent>
-
+      {/* Toasts */}
       <Snackbar
-        open={!!toast}
-        autoHideDuration={2600}
+        open={Boolean(toast)}
+        autoHideDuration={3000}
         onClose={() => setToast(null)}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       >
@@ -482,7 +471,7 @@ const AISuggestionsPanel: React.FC = () => {
           {toast}
         </Alert>
       </Snackbar>
-    </Card>
+    </>
   );
 };
 
