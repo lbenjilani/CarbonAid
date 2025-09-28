@@ -2,8 +2,7 @@
 import axios from 'axios';
 
 const API_BASE =
-  (process.env.REACT_APP_API_BASE || 'http://localhost:5000').replace(/\/$/, '');
-
+  (process.env.REACT_APP_API_BASE || 'http://localhost:3001').replace(/\/$/, '');
 type ChatOk = { response: string };
 type ChatErr = {
   code?: 'MODERATION_BLOCKED' | 'LLM_ERROR';
