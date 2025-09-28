@@ -1,4 +1,3 @@
-// src/pages/Quiz.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Box,
@@ -26,6 +25,7 @@ import Footer from "../components/Footer";
  * - Sticky sidebar with progress
  * - Autosaves to localStorage
  * - Submits to /api/quiz (Mongo via server)
+ * - On success, returns to /dashboard?auto=1 to trigger AI + task-ingest flow
  */
 
 const DRAFT_KEY = "carbonaid_quiz_draft_v1";
@@ -183,7 +183,11 @@ const Quiz: React.FC = () => {
         headers: { "x-user-id": DEV_USER_ID },
       });
       localStorage.removeItem(DRAFT_KEY);
-      navigate("/dashboard"); // back to dashboard so charts/AI can use it
+
+      // 2A/2B: set flags so Dashboard auto-runs AI + ingests tasks, then return to dashboard
+      localStorage.setItem("recalcAfterQuiz", "1");
+      localStorage.setItem("postQuizReturn", "/dashboard?auto=1");
+      navigate("/dashboard?auto=1");
     } catch (err: any) {
       console.error("Submit failed:", err?.response?.data || err.message);
       alert("Submit failed. See console for details.");

@@ -6,11 +6,12 @@ import Dashboard from './pages/Dashboard';
 import Report from './pages/Report';
 import Task from './pages/Task';
 import Quiz from './pages/Quiz';
+import Profile from './pages/Profile';
 
 const App: React.FC = () => {
   return (
     <>
-      <CssBaseline /> {/* ✅ Resets margin, padding, font smoothing, etc */}
+      <CssBaseline />
       <Router>
         <Routes>
           <Route path="/" element={<Home />} />
@@ -18,6 +19,7 @@ const App: React.FC = () => {
           <Route path="/report" element={<Report />} />
           <Route path="/task" element={<Task />} />
           <Route path="/quiz" element={<Quiz />} />
+          <Route path="/profile" element={<Profile />} />
         </Routes>
       </Router>
     </>
