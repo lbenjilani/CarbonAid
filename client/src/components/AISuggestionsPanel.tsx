@@ -27,30 +27,16 @@ type Suggestion = {
   cost: string;
 };
 
-const buildSystemPrompt = () => `
-Return ONLY valid JSON in this exact shape—no markdown, no backticks, no prose:
+// ---- helpers ----------------------------------------------------------------
 
-{
-  "tips": [
-    { "title": "…", "why": "…", "how": "…", "impact": "…", "difficulty": "…", "cost": "…" },
-    { "title": "…", "why": "…", "how": "…", "impact": "…", "difficulty": "…", "cost": "…" },
-    { "title": "…", "why": "…", "how": "…", "impact": "…", "difficulty": "…", "cost": "…" },
-    { "title": "…", "why": "…", "how": "…", "impact": "…", "difficulty": "…", "cost": "…" },
-    { "title": "…", "why": "…", "how": "…", "impact": "…", "difficulty": "…", "cost": "…" }
-  ]
-}
+/** Be defensive: trim gigantic payloads (some models are touchy with >8–16k) */
+const safeSlice = (s: string, max = 8000) => (s.length > max ? s.slice(0, max) : s);
 
-Constraints:
-- Tailor to the user's transport, energy, diet, and consumption context.
-- Keep each field concise (≈<=220 chars).
-- "impact" is a readable estimate (e.g., "200–350 kg CO2e/yr").
-- No extra keys. No fences. No prose.
-`.trim();
-
+/** Robust parser: favor { tips: [...] } but accept [...] and plaintext fallback */
 const parseToSuggestions = (text: string): Suggestion[] => {
   if (!text) return [];
 
-  // 1) Strip markdown code fences if present
+  // 1) Strip code fences if any
   let core = text.trim();
   const fence = core.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) core = fence[1].trim();
@@ -58,40 +44,54 @@ const parseToSuggestions = (text: string): Suggestion[] => {
   // 2) If any preface exists, cut to first JSON token
   const firstArr = core.indexOf('[');
   const firstObj = core.indexOf('{');
-  const cutAt = firstArr === -1 ? firstObj : (firstObj === -1 ? firstArr : Math.min(firstArr, firstObj));
+  const cutAt =
+    firstArr === -1 ? firstObj : firstObj === -1 ? firstArr : Math.min(firstArr, firstObj);
   if (cutAt > 0) core = core.slice(cutAt);
 
-  // 3) Try parsing { tips: [...] } or [...]
+  // 3) Try parsing { tips: [...] } or [...] and clamp to 5 items
   try {
     const parsed = JSON.parse(core);
-
     const toList = (arr: any[]) =>
-      arr.slice(0, 5).map((x: any) => ({
-        title: String(x.title ?? '').trim() || 'Suggestion',
-        why: String(x.why ?? '').trim() || '—',
-        how: String(x.how ?? '').trim() || '—',
-        impact: String(x.impact ?? '').trim() || '—',
-        difficulty: String(x.difficulty ?? '').trim() || '—',
-        cost: String(x.cost ?? '').trim() || '—',
-      }));
+      arr
+        .filter(Boolean)
+        .slice(0, 5)
+        .map((x: any): Suggestion => ({
+          title: String(x?.title ?? '').trim() || 'Suggestion',
+          why: String(x?.why ?? '').trim() || '—',
+          how: String(x?.how ?? '').trim() || '—',
+          impact: String(x?.impact ?? '').trim() || '—',
+          difficulty: String(x?.difficulty ?? '').trim() || '—',
+          cost: String(x?.cost ?? '').trim() || '—',
+        }));
 
     if (Array.isArray(parsed)) return toList(parsed);
     if (parsed && Array.isArray(parsed.tips)) return toList(parsed.tips);
   } catch {
-    // continue to fallback
+    // continue
   }
 
-  // 4) Fallback: split plaintext into up to 5 items
-  const items = core.split(/\n\s*(?=\d+\.\s|[-*•]\s)/g).filter(Boolean).slice(0, 5);
-  return items.map((t) => ({
-    title: t.replace(/^(\d+\.\s*|[-*•]\s*)/, '').slice(0, 80),
-    why: 'N/A',
-    how: t.slice(0, 200),
-    impact: 'N/A',
-    difficulty: 'N/A',
-    cost: 'N/A',
-  }));
+  // 4) Plaintext fallback → up to 5 bullet/numbered items
+  const items = core
+    .split(/\n\s*(?=\d+\.\s|[-*•]\s)/g)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
+  if (items.length) {
+    return items.map((t) => ({
+      title: t.replace(/^(\d+\.\s*|[-*•]\s*)/, '').slice(0, 80),
+      why: 'N/A',
+      how: t.slice(0, 200),
+      impact: 'N/A',
+      difficulty: 'N/A',
+      cost: 'N/A',
+    }));
+  }
+
+  return [];
 };
+
+// ---- component ---------------------------------------------------------------
 
 const AISuggestionsPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -118,27 +118,38 @@ const AISuggestionsPanel: React.FC = () => {
     setLoading(true);
     setError(null);
     setExpandedIndex(null);
+
     try {
       // Pull latest quiz as context
       const latestQuiz = await api.get('/api/quiz/latest', {
         headers: { 'x-user-id': DEV_USER_ID },
       });
+
       if (!latestQuiz.data) {
         setError('No quiz submission found. Complete the quiz first.');
         setLoading(false);
         return;
       }
 
-      const ctx = JSON.stringify(latestQuiz.data);
-      const sys = buildSystemPrompt();
-      const message = `${sys}\n\nUSER_DATA:\n${ctx}`;
+      // We now send ONLY the user context. No system prompt from the client.
+      // (Server applies sterile system + JSON schema + fallback routing.)
+      const ctxString = safeSlice(JSON.stringify(latestQuiz.data));
 
-      // Call backend /chat (through axios service that points to API base)
-      const raw = await askGPT(message);
+      // Call backend /chat (moderation-aware retry lives inside askGPT)
+      const raw = await askGPT(ctxString);
+
+      // If the server or client lib returned a prefixed error string, surface it.
+      if (raw.startsWith('AI error')) {
+        setError(raw.replace(/^AI error:?\s*/i, '') || 'AI failed to generate suggestions.');
+        setSuggestions([]);
+        setLoading(false);
+        return;
+      }
+
       const tips = parseToSuggestions(raw);
 
       if (!tips.length) {
-        setError('AI returned an empty response.');
+        setError('AI returned an empty or unreadable response.');
         setSuggestions([]);
         setLoading(false);
         return;
@@ -147,9 +158,13 @@ const AISuggestionsPanel: React.FC = () => {
       setSuggestions(tips);
 
       // Persist to server
-      await api.post('/api/ai-suggestions', { tips }, {
-        headers: { 'x-user-id': DEV_USER_ID },
-      });
+      await api.post(
+        '/api/ai-suggestions',
+        { tips },
+        {
+          headers: { 'x-user-id': DEV_USER_ID },
+        }
+      );
     } catch (e: any) {
       console.error(e);
       setError('Failed to generate suggestions.');
@@ -188,7 +203,7 @@ const AISuggestionsPanel: React.FC = () => {
           disabled={loading}
           sx={{ mb: 2, bgcolor: '#2e7d32', '&:hover': { bgcolor: '#1b5e20' } }}
         >
-          {loading ? 'Generating...' : (suggestions.length ? 'Regenerate' : 'Generate')}
+          {loading ? 'Generating...' : suggestions.length ? 'Regenerate' : 'Generate'}
         </Button>
 
         {error && (
