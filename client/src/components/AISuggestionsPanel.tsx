@@ -44,8 +44,7 @@ const parseToSuggestions = (text: string): Suggestion[] => {
   // 2) If any preface exists, cut to first JSON token
   const firstArr = core.indexOf('[');
   const firstObj = core.indexOf('{');
-  const cutAt =
-    firstArr === -1 ? firstObj : firstObj === -1 ? firstArr : Math.min(firstArr, firstObj);
+  const cutAt = firstArr === -1 ? firstObj : firstObj === -1 ? firstArr : Math.min(firstArr, firstObj);
   if (cutAt > 0) core = core.slice(cutAt);
 
   // 3) Try parsing { tips: [...] } or [...] and clamp to 5 items
@@ -131,14 +130,12 @@ const AISuggestionsPanel: React.FC = () => {
         return;
       }
 
-      // We now send ONLY the user context. No system prompt from the client.
-      // (Server applies sterile system + JSON schema + fallback routing.)
+      // Send ONLY the user context. (Server applies sterile system + schema + fallback routing.)
       const ctxString = safeSlice(JSON.stringify(latestQuiz.data));
 
-      // Call backend /chat (moderation-aware retry lives inside askGPT)
+      // Ask backend /chat (moderation-aware retry lives inside askGPT)
       const raw = await askGPT(ctxString);
 
-      // If the server or client lib returned a prefixed error string, surface it.
       if (raw.startsWith('AI error')) {
         setError(raw.replace(/^AI error:?\s*/i, '') || 'AI failed to generate suggestions.');
         setSuggestions([]);
@@ -167,7 +164,7 @@ const AISuggestionsPanel: React.FC = () => {
       );
     } catch (e: any) {
       console.error(e);
-      setError('Failed to generate suggestions.');
+      setError(e?.normalizedMessage || 'Failed to generate suggestions.');
     } finally {
       setLoading(false);
     }
