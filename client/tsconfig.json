@@ -1,18 +1,20 @@
 {
   "compilerOptions": {
-    "target": "es6",
-    "module": "esnext",
-    "jsx": "react-jsx",          // Enables React's JSX support
+    "target": "ES2022",
+    "lib": ["DOM", "ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "moduleResolution": "node",
     "resolveJsonModule": true,
-    "baseUrl": "./src",
+    "forceConsistentCasingInFileNames": true,
+
+    "baseUrl": "src",
     "paths": {
-      "@/*": ["./*"]
-    },
-    "forceConsistentCasingInFileNames": true
+      "@/*": ["*"]
+    }
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]
