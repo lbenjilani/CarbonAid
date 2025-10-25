@@ -8,7 +8,7 @@
     "@mui/icons-material": "^6.4.0",
     "@mui/material": "^6.4.0",
     "@nivo/sunburst": "^0.99.0",
-    "axios": "^1.7.9",
+    "axios": "^1.12.2",
     "cra-template": "1.2.0",
     "react": "^19.0.0",
     "react-calendar": "^5.1.0",
