@@ -1,9 +1,11 @@
-import express from 'express';
-import { login, signup } from '../controllers/authController';
+// src/routes/auth.ts
+import { Router } from 'express';
+import { signup, login, googleSignIn } from '../controllers/authController';
 
-const router = express.Router();
+const router = Router();
 
-router.post('/auth/login', login);
-router.post('/auth/signup', signup);
+router.post('/signup', signup);
+router.post('/login', login);
+router.post('/google', googleSignIn); // NEW: Add this route
 
 export default router;
