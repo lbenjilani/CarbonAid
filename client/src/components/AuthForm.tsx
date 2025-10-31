@@ -1,36 +1,26 @@
 // src/pages/AuthPage.tsx
-
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Container,
-  Paper,
-  Box,
-  TextField,
-  Button,
-  Divider,
-  Stack,
-  Typography,
-  Snackbar,
-  Alert,
+  Container, Paper, Box, TextField, Button, Divider, Stack,
+  Typography, Snackbar, Alert
 } from '@mui/material';
-import GoogleIcon from '@mui/icons-material/Google';
 import { useNavigate } from 'react-router-dom';
 import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import api from '../services/api';
 
-// This interface defines the expected shape of the server's auth response
+type Role = 'student' | 'mentor' | 'admin';
+
 interface AuthResponse {
   token: string;
   user: {
     _id: string;
     name: string;
     email: string;
-    role: 'student' | 'mentor' | 'admin';
+    role: Role;
   };
 }
 
 const AuthForm: React.FC = () => {
-  // --- STATE MANAGEMENT ---
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -40,46 +30,55 @@ const AuthForm: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
-  // --- HELPER FUNCTIONS ---
+  // Restore Authorization header if token exists (refresh-safe)
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  }, []);
 
-  /**
-   * Handles successful authentication by storing user data and navigating.
-   */
+  const endpoint = useMemo(
+    () => (mode === 'login' ? '/api/auth/login' : '/api/auth/signup'),
+    [mode]
+  );
+
   const handleAuthSuccess = (data: AuthResponse) => {
-    if (!data?.token || !data?.user) {
-      throw new Error('Invalid server response.');
-    }
+    if (!data?.token || !data?.user) throw new Error('Invalid server response.');
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     api.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
-    navigate('/dashboard'); // Redirect to a protected route
+    navigate('/dashboard');
   };
 
-  /**
-   * Parses error messages from the server or network.
-   */
+  const extractErr = (err: any): string => {
+    // Prefer server-provided messages
+    return (
+      err?.response?.data?.error ||
+      err?.response?.data?.message ||
+      err?.message ||
+      'An unknown error occurred.'
+    );
+  };
+
   const handleAuthError = (err: any) => {
-    const errorMessage = err.response?.data?.error || err.message || 'An unknown error occurred.';
-    setError(errorMessage);
+    const msg = extractErr(err);
+    setError(msg);
     setShowError(true);
   };
 
-  // --- EVENT HANDLERS ---
-
-  /**
-   * Handles form submission for email/password login and signup.
-   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setIsSubmitting(true);
     setError('');
 
-    const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
-    const payload = mode === 'signup' ? { name, email, password } : { email, password };
+    const payload =
+      mode === 'signup'
+        ? { name: name.trim(), email: email.trim().toLowerCase(), password }
+        : { email: email.trim().toLowerCase(), password };
 
     try {
-      const response = await api.post<AuthResponse>(endpoint, payload);
-      handleAuthSuccess(response.data);
+      const res = await api.post<AuthResponse>(endpoint, payload);
+      handleAuthSuccess(res.data);
     } catch (err) {
       handleAuthError(err);
     } finally {
@@ -87,24 +86,21 @@ const AuthForm: React.FC = () => {
     }
   };
 
-  /**
-   * Handles the callback from a successful Google Sign-In.
-   */
   const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    if (isSubmitting) return;
     setIsSubmitting(true);
     setError('');
 
-    if (!credentialResponse.credential) {
+    const cred = credentialResponse.credential;
+    if (!cred) {
       handleAuthError({ message: 'Google Sign-In failed: No credential returned.' });
       setIsSubmitting(false);
       return;
     }
 
     try {
-      const response = await api.post<AuthResponse>('/api/auth/google', {
-        token: credentialResponse.credential,
-      });
-      handleAuthSuccess(response.data);
+      const res = await api.post<AuthResponse>('/api/auth/google', { token: cred });
+      handleAuthSuccess(res.data);
     } catch (err) {
       handleAuthError(err);
     } finally {
@@ -112,29 +108,25 @@ const AuthForm: React.FC = () => {
     }
   };
 
-  /**
-   * Handles errors from the Google Sign-In process itself.
-   */
   const handleGoogleError = () => {
     handleAuthError({ message: 'Google Sign-In process failed. Please try again.' });
   };
 
-  // --- RENDER ---
+  const toggleMode = () => {
+    if (isSubmitting) return;
+    setMode((m) => (m === 'login' ? 'signup' : 'login'));
+  };
+
   return (
     <Container component="main" maxWidth="xs">
       <Paper
         elevation={6}
-        sx={{
-          marginTop: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          padding: 4,
-        }}
+        sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', p: 4 }}
       >
         <Typography component="h1" variant="h5">
           {mode === 'login' ? 'Sign In' : 'Create Account'}
         </Typography>
+
         <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3, width: '100%' }}>
           <Stack spacing={2}>
             {mode === 'signup' && (
@@ -148,6 +140,7 @@ const AuthForm: React.FC = () => {
                 autoFocus
               />
             )}
+
             <TextField
               label="Email Address"
               fullWidth
@@ -158,6 +151,7 @@ const AuthForm: React.FC = () => {
               disabled={isSubmitting}
               autoComplete="email"
             />
+
             <TextField
               label="Password"
               fullWidth
@@ -168,13 +162,8 @@ const AuthForm: React.FC = () => {
               disabled={isSubmitting}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             />
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              disabled={isSubmitting}
-              sx={{ mt: 2, mb: 1 }}
-            >
+
+            <Button type="submit" fullWidth variant="contained" disabled={isSubmitting} sx={{ mt: 2, mb: 1 }}>
               {isSubmitting ? 'Loading…' : mode === 'login' ? 'Sign In' : 'Sign Up'}
             </Button>
 
@@ -184,24 +173,20 @@ const AuthForm: React.FC = () => {
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
                 onError={handleGoogleError}
-                useOneTap
+                // Optional: One Tap can be noisy—keep only on login
+                useOneTap={mode === 'login'}
                 theme="outline"
                 shape="rectangular"
               />
             </Box>
 
-            <Button
-              variant="text"
-              onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
-              disabled={isSubmitting}
-            >
+            <Button variant="text" onClick={toggleMode} disabled={isSubmitting}>
               {mode === 'login' ? "Don't have an account? Sign Up" : 'Already have an account? Sign In'}
             </Button>
           </Stack>
         </Box>
       </Paper>
 
-      {/* Error Display Snackbar */}
       <Snackbar
         open={showError}
         autoHideDuration={6000}

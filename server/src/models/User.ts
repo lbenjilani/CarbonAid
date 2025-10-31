@@ -1,24 +1,31 @@
-// src/models/User.ts (FIXED)
+// src/models/User.ts
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IUser extends Document {
   name: string;
   email: string;
-  password?: string; // CHANGE 1: Made password optional
+  password?: string; // hashed; not selected by default
   role: 'student' | 'mentor' | 'admin';
   createdAt: Date;
-  updatedAt: Date; // CHANGE 2: Added by timestamps
+  updatedAt: Date;
 }
 
-const UserSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: false }, // CHANGE 3: Set required to false
+const UserSchema = new Schema<IUser>({
+  name: { type: String, required: true, trim: true },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    index: true,
+    lowercase: true,          // normalize
+    trim: true
+  },
+  password: { type: String, required: false, select: false }, // <-- hide by default
   role: { type: String, enum: ['student', 'mentor', 'admin'], default: 'student' },
-}, {
-  timestamps: true, // CHANGE 4: Use built-in timestamps (adds createdAt & updatedAt)
-});
+}, { timestamps: true });
 
-// Explicitly connect to the "users" collection
+// Optional: ensure unique index (in some envs you need this explicitly)
+UserSchema.index({ email: 1 }, { unique: true });
+
 const UserModel = mongoose.model<IUser>('User', UserSchema, 'users');
 export default UserModel;

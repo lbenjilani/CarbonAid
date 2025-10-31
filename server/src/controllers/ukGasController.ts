@@ -1,14 +1,48 @@
+// src/controllers/ukGasController.ts
 import { Request, Response } from 'express';
 import UkGasModel from '../models/ukGasModel';
 
+type YearValue = { year: number; value: number };
+
 export const createUkGas = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { sector, subsector, category, data } = req.body;
+    const { sector, subsector, category, data } = req.body as {
+      sector?: string;
+      subsector?: string;
+      category?: string;
+      data?: YearValue[];
+    };
+
+    // STRICT: subsector is required (schema requires it)
+    if (!sector || !subsector || !category || !Array.isArray(data)) {
+      res.status(400).json({
+        error: 'sector, subsector, category, data[] are required',
+      });
+      return;
+    }
+
+    // Validate data array items
+    for (const item of data) {
+      if (
+        typeof item?.year !== 'number' ||
+        !Number.isFinite(item.year) ||
+        typeof item?.value !== 'number' ||
+        !Number.isFinite(item.value)
+      ) {
+        res.status(400).json({
+          error: 'Each data item must be { year: number, value: number }',
+        });
+        return;
+      }
+    }
+
     const doc = new UkGasModel({ sector, subsector, category, data });
     await doc.save();
     res.status(201).json(doc);
   } catch (err) {
-    res.status(400).json({ error: 'Creation failed', details: err });
+    // eslint-disable-next-line no-console
+    console.error('[ERROR] createUkGas:', err);
+    res.status(400).json({ error: 'Creation failed' });
   }
 };
 
@@ -18,16 +52,21 @@ export const getAllCategories = async (_req: Request, res: Response): Promise<vo
     const categories = await UkGasModel.find().distinct('category');
     res.json(categories);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch categories', details: err });
+    // eslint-disable-next-line no-console
+    console.error('[ERROR] getAllCategories:', err);
+    res.status(500).json({ error: 'Failed to fetch categories' });
   }
 };
 
+// GET /api/ukgas
 export const getUkGas = async (_req: Request, res: Response): Promise<void> => {
   try {
     const data = await UkGasModel.find().lean();
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: 'Retrieval failed', details: err });
+    // eslint-disable-next-line no-console
+    console.error('[ERROR] getUkGas:', err);
+    res.status(500).json({ error: 'Retrieval failed' });
   }
 };
 
@@ -35,53 +74,55 @@ export const getUkGas = async (_req: Request, res: Response): Promise<void> => {
 export const getUkGasByCategory = async (req: Request, res: Response): Promise<void> => {
   try {
     const category = decodeURIComponent(req.params.category);
-    const data = await UkGasModel.findOne({ category }).lean();
-    if (!data) {
+    const doc = await UkGasModel.findOne({ category }).lean<{ data?: YearValue[] }>();
+    if (!doc) {
       res.status(404).json({ error: `No data found for category: ${category}` });
-    } else {
-      res.json(data.data); // assume data field contains { year: value, ... }
+      return;
     }
+    res.json(doc.data ?? []);
   } catch (err) {
-    res.status(500).json({ error: 'Retrieval failed', details: err });
+    // eslint-disable-next-line no-console
+    console.error('[ERROR] getUkGasByCategory:', err);
+    res.status(500).json({ error: 'Retrieval failed' });
   }
 };
 
 // GET /api/ukgas/latest-breakdown
 export const getLatestBreakdown = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const records = await UkGasModel.find({}).lean();
-    console.log('[DEBUG] Total records fetched:', records.length);
-
+    const records = await UkGasModel.find({}).lean<{ category: string; data?: YearValue[] }[]>();
     if (!records || records.length === 0) {
-      console.warn('[WARN] No records found in database.');
       res.status(404).json({ error: 'No data found' });
       return;
     }
 
-    // Step 1: Find all unique years across all documents
-    const allYears = records
-      .flatMap(doc => doc.data.map((entry: any) => entry.year))
-      .filter((year, i, arr) => arr.indexOf(year) === i); // remove duplicates
-    console.log('[DEBUG] All unique years found:', allYears);
+    // Gather numeric years from all records
+    const yearSet = new Set<number>();
+    for (const r of records) {
+      (r.data ?? []).forEach((e) => {
+        if (typeof e.year === 'number' && Number.isFinite(e.year)) {
+          yearSet.add(e.year);
+        }
+      });
+    }
 
-    const latestYear = allYears.sort().reverse()[0]; // latest year
-    console.log('[DEBUG] Determined latest year:', latestYear);
+    if (yearSet.size === 0) {
+      res.status(404).json({ error: 'No year data found' });
+      return;
+    }
 
-    // Step 2: Extract latest value per category
-    const breakdown = records.map(doc => {
-      const latestEntry = doc.data.find((entry: any) => entry.year === latestYear);
-      const value = latestEntry?.value ?? 0;
-      console.log(`[DEBUG] ${doc.category}: ${value}`);
-      return {
-        name: doc.category,
-        value
-      };
+    const latestYear = [...yearSet].sort((a, b) => b - a)[0];
+
+    // Compute breakdown for that latest year
+    const breakdown = records.map((doc) => {
+      const latest = (doc.data ?? []).find((e) => e.year === latestYear);
+      return { name: doc.category, value: latest?.value ?? 0 };
     });
 
-    console.log('[DEBUG] Final breakdown:', breakdown);
-    res.json(breakdown);
+    res.json({ year: latestYear, breakdown });
   } catch (err) {
-    console.error('[ERROR] Breakdown aggregation failed:', err);
-    res.status(500).json({ error: 'Failed to aggregate breakdown', details: err });
+    // eslint-disable-next-line no-console
+    console.error('[ERROR] getLatestBreakdown:', err);
+    res.status(500).json({ error: 'Failed to aggregate breakdown' });
   }
 };
