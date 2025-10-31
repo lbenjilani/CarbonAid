@@ -49,15 +49,11 @@ const AuthForm: React.FC = () => {
     navigate('/dashboard');
   };
 
-  const extractErr = (err: any): string => {
-    // Prefer server-provided messages
-    return (
-      err?.response?.data?.error ||
-      err?.response?.data?.message ||
-      err?.message ||
-      'An unknown error occurred.'
-    );
-  };
+  const extractErr = (err: any): string =>
+    err?.response?.data?.error ||
+    err?.response?.data?.message ||
+    err?.message ||
+    'An unknown error occurred.';
 
   const handleAuthError = (err: any) => {
     const msg = extractErr(err);
@@ -173,10 +169,9 @@ const AuthForm: React.FC = () => {
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
                 onError={handleGoogleError}
-                // Optional: One Tap can be noisy—keep only on login
-                useOneTap={mode === 'login'}
-                theme="outline"
-                shape="rectangular"
+                // DO NOT use One-Tap/FedCM — it conflicts with COOP.
+                // Popup is default and stable:
+                // useOneTap (removed)
               />
             </Box>
 
