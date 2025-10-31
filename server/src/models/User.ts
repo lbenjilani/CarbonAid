@@ -1,4 +1,4 @@
-// src/models/User.ts
+// server/src/models/User.ts
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IUser extends Document {
@@ -15,17 +15,17 @@ const UserSchema = new Schema<IUser>({
   email: {
     type: String,
     required: true,
-    unique: true,
-    index: true,
-    lowercase: true,          // normalize
+    unique: true,   // keep unique
+    index: true,    // keep index
+    lowercase: true,
     trim: true
   },
-  password: { type: String, required: false, select: false }, // <-- hide by default
+  password: { type: String, required: false, select: false },
   role: { type: String, enum: ['student', 'mentor', 'admin'], default: 'student' },
 }, { timestamps: true });
 
-// Optional: ensure unique index (in some envs you need this explicitly)
-UserSchema.index({ email: 1 }, { unique: true });
+// ❌ Remove duplicate: you already have unique+index above
+// UserSchema.index({ email: 1 }, { unique: true });
 
 const UserModel = mongoose.model<IUser>('User', UserSchema, 'users');
 export default UserModel;

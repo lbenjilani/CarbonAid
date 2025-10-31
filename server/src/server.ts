@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 import { connectDB } from './db/db';
 
 import userRoutes from './routes/userRoutes';
-import authRoutes from './routes/authRoutes';
+import authRoutes from './routes/authRoutes';       // <-- make sure this file exists
 import ukGasRoutes from './routes/ukGasRoutes';
 import quizRoutes from './routes/quizRoutes';
 import chatRoutes from './routes/chatRoutes';
@@ -22,7 +22,6 @@ const defaultOrigins = [
   'http://127.0.0.1:5173',
 ];
 
-// Parse comma-separated ALLOWED_ORIGINS (e.g., "https://yourapp.com,https://admin.yourapp.com")
 const allowedOriginsEnv = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
   : [];
@@ -32,7 +31,6 @@ const allowedOrigins = [...defaultOrigins, ...allowedOriginsEnv];
 // ----- Middleware -----
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like curl, mobile apps)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -69,7 +67,7 @@ app.post('/api/model', async (req: Request, res: Response): Promise<void> => {
 
 // ----- Feature routes -----
 app.use('/api', userRoutes);
-app.use('/api', authRoutes);
+app.use('/api', authRoutes);              // => /api/auth/* after fix below
 app.use('/api', ukGasRoutes);
 app.use('/api/quiz', quizRoutes);
 app.use('/chat', chatRoutes);
