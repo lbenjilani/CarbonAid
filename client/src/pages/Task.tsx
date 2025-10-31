@@ -1,3 +1,4 @@
+// src/pages/Task.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -14,11 +15,14 @@ import {
   useMediaQuery,
   useTheme,
   Chip,
+  Tooltip,
 } from '@mui/material';
+import type { TypographyProps } from '@mui/material/Typography';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import api from '../services/api';
 
+// ---------- Types ----------
 type Suggestion = {
   title: string;
   why: string;
@@ -40,6 +44,7 @@ type TaskItem = {
 
 const DEV_USER_ID = (process.env.REACT_APP_DEV_USER_ID || '66e000000000000000000001').trim();
 
+// ---------- Utils ----------
 /** Heuristic: map an AI tip to a cadence bucket */
 function guessCadence(tip: Suggestion): TaskItem['cadence'] {
   const d = (tip.difficulty || '').toLowerCase();
@@ -56,6 +61,12 @@ function impactBadge(tip: Suggestion) {
   if (/\b[3-9]\d{2}\b/.test(txt) || /[5-9]\d{2}\s*kg/.test(txt)) return { label: tip.impact, color: 'warning' as const };
   return { label: tip.impact || '—', color: 'success' as const };
 }
+
+/** Robust ID */
+const makeId = (prefix: string) =>
+  (typeof globalThis.crypto?.randomUUID === 'function'
+    ? `${prefix}-${globalThis.crypto.randomUUID()}`
+    : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 /** LocalStorage fallback with stable function identities */
 function useLocalTasksFallback() {
@@ -79,7 +90,48 @@ function useLocalTasksFallback() {
   return { load, save };
 }
 
-/** Presentational bucket column */
+// ---------- Reusable truncation component ----------
+/**
+ * TruncatableText
+ * - Clamps to N lines
+ * - Preserves wrapping (URLs/long words)
+ * - Shows full value in a tooltip on hover/focus
+ */
+const TruncatableText: React.FC<{
+  children?: React.ReactNode;
+  maxLines: number;
+  variant?: TypographyProps['variant'];   // widened to any MUI variant (e.g., "h4")
+  fontWeight?: number | 'bold';
+  color?: TypographyProps['color'];
+  dataTestId?: string;
+}> = ({ children, maxLines, variant = 'body1', fontWeight, color, dataTestId }) => {
+  const text = String(children ?? '');
+  return (
+    <Tooltip title={text} disableInteractive enterDelay={600}>
+      <Typography
+        variant={variant}
+        color={color}
+        data-testid={dataTestId}
+        sx={{
+          display: '-webkit-box',
+          WebkitBoxOrient: 'vertical',
+          WebkitLineClamp: maxLines,
+          overflow: 'hidden',
+          // critical for long unbroken strings / URLs:
+          wordBreak: 'break-word',
+          overflowWrap: 'anywhere',
+          hyphens: 'auto',
+          whiteSpace: 'normal',
+          fontWeight,
+        }}
+      >
+        {text}
+      </Typography>
+    </Tooltip>
+  );
+};
+
+// ---------- Presentational bucket column ----------
 const BucketColumn: React.FC<{
   title: string;
   items: TaskItem[];
@@ -87,6 +139,11 @@ const BucketColumn: React.FC<{
   onRemove: (id: string) => void;
   onAddQuick: (title: string) => void;
 }> = ({ title, items, onToggle, onRemove, onAddQuick }) => {
+  const theme = useTheme();
+  const isSm = useMediaQuery(theme.breakpoints.down('sm'));
+  const titleLines = isSm ? 2 : 1;       // tighter on mobile
+  const detailsLines = isSm ? 3 : 2;
+
   return (
     <Paper
       elevation={3}
@@ -99,39 +156,111 @@ const BucketColumn: React.FC<{
         minHeight: 360,
         display: 'flex',
         flexDirection: 'column',
+        minWidth: 0, // allow flex children to shrink properly
       }}
+      aria-label={`${title} bucket`}
+      role="region"
     >
       <Typography variant="h6" textAlign="center" mb={2} color="primary" fontWeight="bold">
         {title}
       </Typography>
 
-      <List sx={{ flex: 1, overflowY: 'auto' }}>
+      <List sx={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
         {items.map((task) => {
           const badge = task.meta ? impactBadge(task.meta as Suggestion) : null;
+
           return (
             <ListItem
               key={task.id}
+              alignItems="flex-start"
+              sx={{
+                gap: 1,
+                // keep layout resilient for long text
+                minWidth: 0,
+                '& .MuiListItemSecondaryAction-root': { right: 0 },
+              }}
               secondaryAction={
-                <Button size="small" color="error" onClick={() => onRemove(task.id)} sx={{ textTransform: 'none' }}>
+                <Button
+                  size="small"
+                  color="error"
+                  onClick={() => onRemove(task.id)}
+                  sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
+                  aria-label={`Remove ${task.title}`}
+                >
                   Remove
                 </Button>
               }
             >
-              <ListItemIcon>
-                <Checkbox checked={task.completed} onChange={() => onToggle(task.id)} sx={{ color: '#66bb6a' }} />
+              <ListItemIcon sx={{ minWidth: 40 }}>
+                <Checkbox
+                  checked={task.completed}
+                  onChange={() => onToggle(task.id)}
+                  sx={{ color: '#66bb6a' }}
+                  inputProps={{ 'aria-label': `Mark ${task.title} as ${task.completed ? 'incomplete' : 'complete'}` }}
+                />
               </ListItemIcon>
+
               <ListItemText
+                sx={{
+                  minWidth: 0, // allow text to shrink within flex
+                  mr: 7,       // leave room for secondaryAction
+                }}
                 primary={
-                  <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
-                    {task.title}
-                    {badge && <Chip size="small" color={badge.color} label={badge.label} />}
+                  <Box
+                    display="flex"
+                    alignItems="center"
+                    gap={1}
+                    flexWrap="nowrap"
+                    sx={{ minWidth: 0, overflow: 'hidden' }}
+                  >
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <TruncatableText
+                        maxLines={titleLines}
+                        variant="subtitle2"
+                        fontWeight="bold"
+                        dataTestId="task-title"
+                      >
+                        {task.title}
+                      </TruncatableText>
+                    </Box>
+                    {badge && (
+                      <Chip
+                        size="small"
+                        color={badge.color}
+                        label={badge.label}
+                        sx={{
+                          maxWidth: 160,
+                          // Chip label wrapping:
+                          '& .MuiChip-label': {
+                            display: 'block',
+                            whiteSpace: 'normal',
+                            wordBreak: 'break-word',
+                            overflowWrap: 'anywhere',
+                            lineHeight: 1.2,
+                          },
+                        }}
+                        aria-label={`Impact ${badge.label}`}
+                      />
+                    )}
                   </Box>
                 }
-                secondary={task.details}
+                secondary={
+                  task.details ? (
+                    <TruncatableText
+                      maxLines={detailsLines}
+                      variant="body2"
+                      color="text.secondary"
+                      dataTestId="task-details"
+                    >
+                      {task.details}
+                    </TruncatableText>
+                  ) : null
+                }
               />
             </ListItem>
           );
         })}
+
         {!items.length && (
           <Typography variant="body2" color="text.secondary" textAlign="center" mt={2}>
             No tasks yet in this bucket.
@@ -144,6 +273,7 @@ const BucketColumn: React.FC<{
           variant="contained"
           color="success"
           onClick={() => onAddQuick(`Custom ${title.replace(/ Goals?$/i, '')} Goal`)}
+          aria-label={`Add ${title} goal`}
         >
           Add a goal
         </Button>
@@ -152,6 +282,7 @@ const BucketColumn: React.FC<{
   );
 };
 
+// ---------- Page ----------
 const Task: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -164,7 +295,7 @@ const Task: React.FC = () => {
   const [aiTips, setAiTips] = useState<Suggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // --- Load existing tasks ONCE (fix for infinite loop) ---
+  // Load tasks once
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -182,9 +313,9 @@ const Task: React.FC = () => {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // ← run once
+  }, []);
 
-  // Latest AI suggestions (ONCE)
+  // Latest AI suggestions (once)
   useEffect(() => {
     (async () => {
       try {
@@ -199,14 +330,14 @@ const Task: React.FC = () => {
     })();
   }, []);
 
-  // Group tasks by cadence (memoized)
+  // Group tasks by cadence
   const grouped = useMemo(() => {
     const g: Record<'daily' | 'monthly' | 'yearly', TaskItem[]> = { daily: [], monthly: [], yearly: [] };
     for (const t of tasks) g[t.cadence].push(t);
     return g;
   }, [tasks]);
 
-  // Handlers (stable)
+  // Handlers
   const toggleTask = useCallback((id: string) => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)));
   }, []);
@@ -225,7 +356,7 @@ const Task: React.FC = () => {
   const addQuick = useCallback(
     (cadence: TaskItem['cadence'], title: string) => {
       addTask({
-        id: `user-${Date.now()}`,
+        id: makeId('user'),
         title,
         details: '',
         cadence,
@@ -251,11 +382,10 @@ const Task: React.FC = () => {
     }
   }, [saveLocal, tasks]);
 
-  // Manual, one-shot ingestion from AI (button-driven)
   const ingestAllFromAI = useCallback(() => {
     if (!aiTips?.length) return;
     const newOnes: TaskItem[] = aiTips.map((tip, i) => ({
-      id: `ai-${Date.now()}-${i}`,
+      id: makeId('ai'),
       title: tip.title || `AI Tip ${i + 1}`,
       details: tip.how || tip.why || '',
       cadence: guessCadence(tip),
@@ -274,12 +404,29 @@ const Task: React.FC = () => {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#eaf5e1', display: 'flex', flexDirection: 'column' }}>
       <Header />
-      <Container maxWidth="lg" sx={{ py: 4, flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
-          <Typography variant="h4" fontWeight="bold" gutterBottom>
+      <Container
+        maxWidth="lg"
+        sx={{
+          py: 4,
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          // prevent horizontal scroll at all costs
+          minWidth: 0,
+        }}
+      >
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          flexWrap="wrap"
+          gap={2}
+          sx={{ minWidth: 0 }}
+        >
+          <TruncatableText maxLines={2} variant="h4" fontWeight="bold" dataTestId="page-title">
             🌱 Your Goals to Mitigate Emissions
-          </Typography>
-          <Stack direction="row" spacing={1}>
+          </TruncatableText>
+          <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
             <Button
               variant="outlined"
               color="success"
@@ -302,7 +449,7 @@ const Task: React.FC = () => {
         )}
 
         {/* Buckets */}
-        <Stack direction={isMobile ? 'column' : 'row'} spacing={3} mt={2} mb={5}>
+        <Stack direction={isMobile ? 'column' : 'row'} spacing={3} mt={2} mb={5} sx={{ minWidth: 0 }}>
           <BucketColumn
             title="Daily Goals"
             items={grouped.daily}
@@ -327,7 +474,7 @@ const Task: React.FC = () => {
         </Stack>
 
         {/* Suggested Goals (from AI) — quick add */}
-        <Stack direction={isMobile ? 'column' : 'row'} spacing={3}>
+        <Stack direction={isMobile ? 'column' : 'row'} spacing={3} sx={{ minWidth: 0 }}>
           {(['daily', 'monthly', 'yearly'] as const).map((bucket, index) => {
             const items = aiTips
               .map((t) => ({ tip: t, cadence: guessCadence(t) }))
@@ -342,12 +489,19 @@ const Task: React.FC = () => {
               <Paper
                 key={index}
                 elevation={2}
-                sx={{ flex: 1, p: 3, bgcolor: '#f0f8e0', borderLeft: '5px solid #81c784' }}
+                sx={{
+                  flex: 1,
+                  p: 3,
+                  bgcolor: '#f0f8e0',
+                  borderLeft: '5px solid #81c784',
+                  minWidth: 0,
+                }}
               >
-                <Typography variant="subtitle1" textAlign="center" fontWeight="bold" gutterBottom>
+                <Typography variant="subtitle1" textAlign="center" fontWeight="bold" gutterBottom noWrap>
                   {title}
                 </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
                   {items.length ? (
                     items.map((tip, idx) => (
                       <Button
@@ -360,10 +514,18 @@ const Task: React.FC = () => {
                           fontWeight: 'bold',
                           '&:hover': { borderColor: '#66bb6a', bgcolor: '#e8f5e9' },
                           justifyContent: 'space-between',
+                          // let long titles wrap:
+                          whiteSpace: 'normal',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'anywhere',
+                          alignItems: 'flex-start',
+                          textAlign: 'left',
+                          minWidth: 0,
+                          p: 1.25,
                         }}
                         onClick={() =>
                           addTask({
-                            id: `ai-${Date.now()}-${idx}`,
+                            id: makeId('ai'),
                             title: tip.title || 'AI Tip',
                             details: tip.how || tip.why || '',
                             cadence: guessCadence(tip),
@@ -372,9 +534,12 @@ const Task: React.FC = () => {
                             meta: tip,
                           })
                         }
-                        endIcon={<span style={{ fontWeight: 'bold', fontSize: 20 }}>＋</span>}
+                        endIcon={<span style={{ fontWeight: 'bold', fontSize: 20, lineHeight: 1 }}>＋</span>}
+                        aria-label={`Add suggestion: ${tip.title}`}
                       >
-                        {tip.title}
+                        <TruncatableText maxLines={2} variant="body2" fontWeight={700}>
+                          {tip.title}
+                        </TruncatableText>
                       </Button>
                     ))
                   ) : (
