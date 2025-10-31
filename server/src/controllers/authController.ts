@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
+import { Types } from 'mongoose';
 import UserModel from '../models/User';
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -22,6 +23,12 @@ type JwtPayload = { id: string; email: string; role?: string };
 // --- Helpers ---
 const signAppToken = (payload: JwtPayload) =>
   jwt.sign(payload, JWT_SECRET!, { expiresIn: '1d' });
+
+// Normalize unknown _id → string safely (Mongoose v7 types)
+const toId = (doc: { _id: unknown }): string => {
+  if (doc._id instanceof Types.ObjectId) return doc._id.toHexString();
+  return String(doc._id);
+};
 
 // --- Signup: email/password flow ---
 export const signup = async (req: Request, res: Response): Promise<void> => {
@@ -54,7 +61,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       password: passwordHash,
     });
 
-    const token = signAppToken({ id: user._id.toString(), email: user.email, role: user.role });
+    const token = signAppToken({ id: toId(user), email: user.email, role: user.role });
     const { password: _omit, ...safe } = user.toObject();
 
     res.status(201).json({ message: 'Signup success', token, user: safe });
@@ -95,7 +102,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const token = signAppToken({ id: user._id.toString(), email: user.email, role: user.role });
+    const token = signAppToken({ id: toId(user), email: user.email, role: user.role });
     const { password: _omit, ...safe } = user.toObject();
     res.json({ message: 'Login success', token, user: safe });
   } catch (err) {
@@ -147,7 +154,7 @@ export const googleSignIn = async (req: Request, res: Response): Promise<void> =
       });
     }
 
-    const appToken = signAppToken({ id: user._id.toString(), email: user.email, role: user.role });
+    const appToken = signAppToken({ id: toId(user), email: user.email, role: user.role });
     const { password: _omit, ...safe } = user.toObject();
 
     res.json({ message: 'Google Sign-In successful', token: appToken, user: safe });
