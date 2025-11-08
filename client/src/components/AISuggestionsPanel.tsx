@@ -7,17 +7,22 @@ import {
   CardContent,
   Button,
   Chip,
-  Collapse,
   Stack,
   Snackbar,
   Alert,
   Tooltip,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  useTheme,
 } from '@mui/material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import SignalCellularAltRoundedIcon from '@mui/icons-material/SignalCellularAltRounded';
 import api from '../services/api';
 import { askGPT } from '../services/chatService';
 
@@ -31,8 +36,6 @@ type Suggestion = {
   difficulty: string;
   cost: string;
 };
-
-/* ---------------- helpers (pure) ---------------- */
 
 const clamp = (s: unknown, max = 500): string =>
   typeof s === 'string' ? (s.length > max ? s.slice(0, max) : s) : String(s ?? '');
@@ -66,9 +69,7 @@ function pickQuizContext(raw: any) {
     if (typeof v === 'string') out[k] = clamp(v, 200);
     else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v;
   }
-  if (out.transport && out.energy) {
-    out._hint = 'prioritize the biggest annual CO2e reductions across transport and energy first';
-  }
+  if (out.transport && out.energy) out._hint = 'prioritize the biggest annual CO2e reductions across transport and energy first';
   return out;
 }
 
@@ -126,24 +127,16 @@ const friendlyAiError = (raw: unknown): string => {
   return 'The AI service is having an issue. Please try again later.';
 };
 
-/* ---------------- tiny rotating-earth loader ---------------- */
 const EarthLoader: React.FC = () => (
-  <Box
-    sx={{
-      display: 'grid',
-      placeItems: 'center',
-      height: 180,
-    }}
-  >
+  <Box sx={{ display: 'grid', placeItems: 'center', height: 140 }}>
     <Box
       sx={{
-        width: 72,
-        height: 72,
+        width: 52,
+        height: 52,
         borderRadius: '50%',
         background:
           'radial-gradient(circle at 35% 30%, #7ec8a3 25%, #2d8555 26% 40%, #7ec8a3 41% 55%, #2d8555 56% 70%, #7ec8a3 71%)',
         boxShadow: 'inset -8px -10px 16px rgba(0,0,0,0.15), 0 0 0 4px rgba(117,183,141,0.35)',
-        position: 'relative',
         animation: 'spin 5s linear infinite',
         '@keyframes spin': { from: { transform: 'rotate(0deg)' }, to: { transform: 'rotate(360deg)' } },
       }}
@@ -155,99 +148,189 @@ const EarthLoader: React.FC = () => (
   </Box>
 );
 
-/* ---------------- Suggestion Card ---------------- */
-const SuggestionCard = React.memo(function SuggestionCard({
-  s,
-  i,
-  expanded,
-  toggle,
-}: {
-  s: Suggestion;
-  i: number;
-  expanded: boolean;
-  toggle: (idx: number) => void;
-}) {
+function levelFromText(s: string) {
+  const v = (s || '').toLowerCase();
+  if (/low|^l\b|1/.test(v)) return 1;
+  if (/med|medium|2/.test(v)) return 2;
+  if (/high|3/.test(v)) return 3;
+  return 2;
+}
+
+const Bars: React.FC<{ level: 1 | 2 | 3 }> = ({ level }) => {
+  const theme = useTheme();
   return (
-    <Card
-      variant="outlined"
+    <Box sx={{ display: 'inline-flex', alignItems: 'flex-end', gap: 0.25 }}>
+      {[1, 2, 3].map((i) => (
+        <Box
+          key={i}
+          sx={{
+            width: 6,
+            height: 6 + i * 6,
+            borderRadius: 1,
+            bgcolor: i <= level ? theme.palette.success.main : 'action.disabledBackground',
+            opacity: i <= level ? 1 : 0.7,
+          }}
+        />
+      ))}
+    </Box>
+  );
+};
+
+const Dollars: React.FC<{ level: 1 | 2 | 3 }> = ({ level }) => (
+  <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>
+    {[1, 2, 3].map((i) => (
+      <AttachMoneyIcon key={i} fontSize="small" sx={{ opacity: i <= level ? 1 : 0.35, color: i <= level ? 'success.main' : 'text.disabled' }} />
+    ))}
+  </Box>
+);
+
+const TruncOneLine: React.FC<{ children: React.ReactNode; title?: string }> = ({ children, title }) => (
+  <Typography
+    variant="body2"
+    title={title}
+    sx={{
+      display: '-webkit-box',
+      WebkitLineClamp: 1,
+      WebkitBoxOrient: 'vertical',
+      overflow: 'hidden',
+      wordBreak: 'break-word',
+    }}
+  >
+    {children}
+  </Typography>
+);
+
+const SuggestionRow: React.FC<{
+  s: Suggestion;
+  index: number;
+  onView: (s: Suggestion) => void;
+}> = ({ s, index, onView }) => {
+  const diffLvl = levelFromText(s.difficulty) as 1 | 2 | 3;
+  const costLvl = levelFromText(s.cost) as 1 | 2 | 3;
+
+  return (
+    <Box
       sx={{
+        border: '1px solid rgba(117,183,141,0.35)',
         borderRadius: 2,
-        borderColor: 'rgba(99, 161, 116, 0.35)',
-        background: '#f7fff3',
+        p: 1.25,
+        bgcolor: '#f8fff4',
+        display: 'grid',
+        gridTemplateColumns: 'auto 1fr auto',
+        alignItems: 'center',
+        gap: 1,
+        transition: 'border-color 120ms ease, box-shadow 120ms ease',
+        '&:hover': { borderColor: 'success.main', boxShadow: 1 },
       }}
     >
-      <CardContent sx={{ pt: 1.5 }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="subtitle1" fontWeight={700}>
-            {i + 1}. {s.title}
-          </Typography>
-          <Button
-            size="small"
-            onClick={() => toggle(i)}
-            endIcon={expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            sx={{ color: '#1f7a3a', fontWeight: 700 }}
-          >
-            {expanded ? 'Hide' : 'Details'}
-          </Button>
-        </Stack>
-
-        <Collapse
-          in={expanded}
-          unmountOnExit
+      <Chip size="small" label={index + 1} color="success" sx={{ fontWeight: 700 }} />
+      <Box sx={{ minWidth: 0 }}>
+        <Typography
+          variant="subtitle2"
+          fontWeight={800}
           sx={{
-            // keep width stable by reserving gutter even when scrollbar appears
-            scrollbarGutter: 'stable both-edges',
+            display: '-webkit-box',
+            WebkitLineClamp: 1,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            wordBreak: 'break-word',
           }}
+          title={s.title}
         >
-          <Divider sx={{ my: 1.25 }} />
-          <Typography variant="body2" sx={{ mb: 0.5 }}>
-            <strong>Why:</strong> {s.why}
-          </Typography>
-          <Typography variant="body2">
-            <strong>How:</strong> {s.how}
-          </Typography>
-          <Stack direction="row" spacing={1} mt={1.25} flexWrap="wrap">
-            <Chip label={`Impact: ${s.impact}`} sx={{ bgcolor: '#2e7d32', color: '#fff' }} size="small" />
-            <Chip label={`Difficulty: ${s.difficulty}`} sx={{ bgcolor: '#f57c00', color: '#fff' }} size="small" />
-            <Chip label={`Cost: ${s.cost}`} sx={{ bgcolor: '#0288d1', color: '#fff' }} size="small" />
+          {s.title}
+        </Typography>
+        <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mt: 0.5, flexWrap: 'wrap' }}>
+          <Chip size="small" color="success" variant="outlined" label={s.impact || 'Impact —'} sx={{ height: 22 }} />
+          <Stack direction="row" spacing={0.5} alignItems="center">
+            <SignalCellularAltRoundedIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+            <Bars level={diffLvl} />
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+              Difficulty
+            </Typography>
           </Stack>
-        </Collapse>
-      </CardContent>
-    </Card>
+          <Stack direction="row" spacing={0.5} alignItems="center">
+            <Dollars level={costLvl} />
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 0.25 }}>
+              Cost
+            </Typography>
+          </Stack>
+        </Stack>
+        <Divider sx={{ my: 1 }} />
+        <Stack spacing={0.5}>
+          <TruncOneLine title={s.why}><strong>Why:</strong> {s.why || '—'}</TruncOneLine>
+          <TruncOneLine title={s.how}><strong>How:</strong> {s.how || '—'}</TruncOneLine>
+        </Stack>
+      </Box>
+      <Button
+        size="small"
+        variant="text"
+        onClick={() => onView(s)}
+        startIcon={<InfoOutlinedIcon />}
+        sx={{ textTransform: 'none', fontWeight: 700, color: 'success.dark' }}
+      >
+        Details
+      </Button>
+    </Box>
   );
-});
+};
 
-/* ---------------- component ---------------- */
+const DetailsDialog: React.FC<{ open: boolean; s: Suggestion | null; onClose: () => void }> = ({ open, s, onClose }) => {
+  if (!s) return null;
+  const diffLvl = levelFromText(s.difficulty) as 1 | 2 | 3;
+  const costLvl = levelFromText(s.cost) as 1 | 2 | 3;
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle sx={{ pb: 1 }}>
+        <Typography variant="h6" fontWeight={900}>{s.title}</Typography>
+      </DialogTitle>
+      <DialogContent dividers sx={{ display: 'grid', gap: 1.25 }}>
+        <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+          <Chip size="small" color="success" label={`Impact: ${s.impact || '—'}`} />
+          <Stack direction="row" spacing={0.75} alignItems="center">
+            <Typography variant="caption" color="text.secondary">Difficulty</Typography>
+            <Bars level={diffLvl} />
+          </Stack>
+          <Stack direction="row" spacing={0.75} alignItems="center">
+            <Typography variant="caption" color="text.secondary">Cost</Typography>
+            <Dollars level={costLvl} />
+          </Stack>
+        </Stack>
+        <Box>
+          <Typography variant="overline" color="text.secondary">Why</Typography>
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 0.25 }}>{s.why || '—'}</Typography>
+        </Box>
+        <Box>
+          <Typography variant="overline" color="text.secondary">How</Typography>
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 0.25 }}>{s.how || '—'}</Typography>
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ px: 2, py: 1.25 }}>
+        <Button onClick={onClose} variant="contained" sx={{ textTransform: 'none' }}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
 
 const AISuggestionsPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(0); // expand first by default
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [lastQuizHash, setLastQuizHash] = useState<string | null>(null);
+  const [dlgOpen, setDlgOpen] = useState(false);
+  const [dlgItem, setDlgItem] = useState<Suggestion | null>(null);
   const clickLockRef = useRef<number>(0);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Load latest saved suggestions on mount
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get('/api/ai-suggestions/latest', {
-          headers: { 'x-user-id': DEV_USER_ID },
-        });
+        const res = await api.get('/api/ai-suggestions/latest', { headers: { 'x-user-id': DEV_USER_ID } });
         const latest = res.data;
         if (latest?.tips?.length) setSuggestions(latest.tips);
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     })();
   }, []);
-
-  const toggleExpand = useCallback(
-    (idx: number) => setExpandedIndex((cur) => (cur === idx ? null : idx)),
-    []
-  );
 
   const pushAiNotification = useCallback((count: number) => {
     try {
@@ -261,9 +344,7 @@ const AISuggestionsPanel: React.FC = () => {
         type: 'ai',
       });
       localStorage.setItem('notifications', JSON.stringify(arr.slice(0, 50)));
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, []);
 
   const handleGenerate = useCallback(
@@ -273,9 +354,7 @@ const AISuggestionsPanel: React.FC = () => {
       clickLockRef.current = now;
 
       if (abortRef.current) {
-        try {
-          abortRef.current.abort();
-        } catch {}
+        try { abortRef.current.abort(); } catch {}
       }
       const ac = new AbortController();
       abortRef.current = ac;
@@ -323,20 +402,13 @@ const AISuggestionsPanel: React.FC = () => {
 
         setSuggestions(tips);
         setLastQuizHash(hash);
-        setExpandedIndex(0); // open first item after fresh generate
 
-        // Persist to server
         await api.post('/api/ai-suggestions', { tips }, { headers: { 'x-user-id': DEV_USER_ID } });
 
-        // 🔔 notify header
         pushAiNotification(tips.length);
-
         setToast('Suggestions updated.');
       } catch (e: any) {
-        if (e?.code !== 'ERR_CANCELED') {
-          console.error(e);
-          setError(friendlyAiError(e?.message || e));
-        }
+        if (e?.code !== 'ERR_CANCELED') setError(friendlyAiError(e?.message || e));
       } finally {
         if (abortRef.current === ac) abortRef.current = null;
         setLoading(false);
@@ -347,126 +419,101 @@ const AISuggestionsPanel: React.FC = () => {
 
   const header = useMemo(
     () => (
-      <Stack direction="row" alignItems="center" gap={1.25} sx={{ mb: 1 }}>
-        <Box
-          sx={{
-            width: 26,
-            height: 26,
-            borderRadius: '50%',
-            display: 'grid',
-            placeItems: 'center',
-            bgcolor: '#2e7d32',
-            color: '#fff',
-            boxShadow: '0 0 0 2px rgba(46,125,50,0.25)',
-          }}
-        >
-          <SmartToyIcon fontSize="small" />
-        </Box>
-        <Typography variant="h6" fontWeight={900} sx={{ color: '#1c6b34' }}>
-          AI Suggestions
-        </Typography>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+        <Stack direction="row" alignItems="center" gap={1}>
+          <Box
+            sx={{
+              width: 26,
+              height: 26,
+              borderRadius: '50%',
+              display: 'grid',
+              placeItems: 'center',
+              bgcolor: 'success.main',
+              color: '#fff',
+              boxShadow: '0 0 0 2px rgba(46,125,50,0.25)',
+            }}
+          >
+            <SmartToyIcon fontSize="small" />
+          </Box>
+          <Typography variant="h6" fontWeight={900} sx={{ color: 'success.dark' }}>
+            AI Suggestions
+          </Typography>
+        </Stack>
+        <Stack direction="row" spacing={1}>
+          <Tooltip title="Generate from your latest quiz responses">
+            <span>
+              <Button
+                onClick={() => void handleGenerate()}
+                variant="contained"
+                disabled={loading}
+                startIcon={<AutorenewIcon />}
+                sx={{ bgcolor: 'success.main', '&:hover': { bgcolor: 'success.dark' }, textTransform: 'none' }}
+              >
+                {loading ? 'Working…' : suggestions.length ? 'Regenerate' : 'Generate'}
+              </Button>
+            </span>
+          </Tooltip>
+          {suggestions.length > 0 && (
+            <Tooltip title="Force a fresh run even if nothing changed">
+              <span>
+                <Button onClick={() => void handleGenerate({ force: true })} variant="outlined" disabled={loading} sx={{ textTransform: 'none' }}>
+                  Force
+                </Button>
+              </span>
+            </Tooltip>
+          )}
+        </Stack>
       </Stack>
     ),
-    []
+    [loading, suggestions.length, handleGenerate]
   );
+
+  const openDetails = (s: Suggestion) => {
+    setDlgItem(s);
+    setDlgOpen(true);
+  };
 
   return (
     <>
       <Card
         sx={{
+          width: '100%',
+          maxWidth: { xs: '100%', sm: 680, md: 740 },
           bgcolor: '#f3faef',
           borderRadius: 3,
           border: '1px solid rgba(117,183,141,0.35)',
           boxShadow: '0 6px 24px rgba(46,125,50,0.08)',
           p: 1.5,
-          minHeight: 300,
-          maxHeight: 600,
-          display: 'flex',
-          flexDirection: 'column',
         }}
       >
-        <CardContent
-          sx={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
+        <CardContent sx={{ p: { xs: 1.5, sm: 2 }, display: 'flex', flexDirection: 'column', gap: 1 }}>
           {header}
 
-          <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
-            <Tooltip title="Generate from your latest quiz responses">
-              <span>
-                <Button
-                  onClick={() => void handleGenerate()}
-                  variant="contained"
-                  disabled={loading}
-                  startIcon={<AutorenewIcon />}
-                  sx={{ bgcolor: '#2e7d32', '&:hover': { bgcolor: '#1b5e20' } }}
-                >
-                  {loading ? 'Working…' : suggestions.length ? 'Regenerate' : 'Generate'}
-                </Button>
-              </span>
-            </Tooltip>
-            {suggestions.length > 0 && (
-              <Tooltip title="Force a fresh run even if nothing changed">
-                <span>
-                  <Button onClick={() => void handleGenerate({ force: true })} variant="outlined" disabled={loading}>
-                    Force
-                  </Button>
-                </span>
-              </Tooltip>
-            )}
-          </Stack>
-
           {error && (
-            <Alert severity="error" sx={{ mb: 1 }}>
+            <Alert severity="error" sx={{ mb: 0.5 }}>
               {error}
             </Alert>
           )}
 
           {loading ? (
             <EarthLoader />
+          ) : suggestions.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Click “Generate” to get personalized, high-impact actions to cut your emissions.
+            </Typography>
           ) : (
-            <Box
-              sx={{
-                flex: 1,
-                overflowY: 'auto',
-                pr: 1,
-                // 👇 keep width stable when vertical scrollbar appears/disappears
-                scrollbarGutter: 'stable both-edges',
-              }}
-            >
-              {suggestions.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  Click “Generate” to get personalized, high-impact actions to cut your emissions.
-                </Typography>
-              ) : (
-                <Stack spacing={1.25}>
-                  {suggestions.map((s, i) => (
-                    <SuggestionCard
-                      key={`${s.title}-${i}`}
-                      s={s}
-                      i={i}
-                      expanded={expandedIndex === i}
-                      toggle={(idx) => setExpandedIndex((cur) => (cur === idx ? null : idx))}
-                    />
-                  ))}
-                </Stack>
-              )}
-            </Box>
+            <Stack spacing={1}>
+              {suggestions.map((s, i) => (
+                <SuggestionRow key={`${s.title}-${i}`} s={s} index={i} onView={openDetails} />
+              ))}
+            </Stack>
           )}
         </CardContent>
       </Card>
 
-      {/* Toasts */}
-      <Snackbar
-        open={Boolean(toast)}
-        autoHideDuration={3000}
-        onClose={() => setToast(null)}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-      >
+      <DetailsDialog open={dlgOpen} s={dlgItem} onClose={() => setDlgOpen(false)} />
+
+      <Snackbar open={Boolean(toast)} autoHideDuration={3000} onClose={() => setToast(null)} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
         <Alert onClose={() => setToast(null)} severity="success" variant="filled" sx={{ width: '100%' }}>
           {toast}
         </Alert>
