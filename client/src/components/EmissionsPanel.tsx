@@ -1,5 +1,5 @@
 // src/components/EmissionsPanel.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Stack,
@@ -17,6 +17,7 @@ import {
   useTheme,
   Tooltip as MuiTooltip,
   Button,
+  Divider as MuiDivider,
 } from '@mui/material';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -31,16 +32,14 @@ import api from '../services/api';
 interface LinePoint { year: string; value: number; }
 interface PiePoint { name: string; value: number; }
 
-const DEV_USER_ID = (process.env.REACT_APP_DEV_USER_ID || '66e000000000000000000001').trim();
-
 const colorPalette = [
   '#2e7d32', '#1f77b4', '#ff7f0e', '#d62728',
   '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
   '#17becf', '#66bb6a', '#43a047', '#81c784', '#9ccc65',
 ];
 
-/* ---------------- shared helpers ---------------- */
-const parseNumber = (v: any): number => {
+/* ---------------- helpers ---------------- */
+const parseNumber = (v: unknown): number => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
   if (typeof v === 'string') {
     const cleaned = v.replace(/,/g, '').match(/-?\d+(\.\d+)?/)?.[0] ?? '';
@@ -51,30 +50,23 @@ const parseNumber = (v: any): number => {
 };
 
 function toBarSeries(raw: unknown[]): { name: string; value: number }[] {
-  const normalized: { name: string; value: number }[] = (Array.isArray(raw) ? raw : []).map((p: any) => {
-    const name: string = String(p?.name ?? p?.category ?? p?.sector ?? p?.label ?? '').trim();
-    const value: number = parseNumber(p?.value ?? p?.amount ?? p?.emissions ?? p?.co2);
+  const normalized = (Array.isArray(raw) ? raw : []).map((p: any) => {
+    const name = String(p?.name ?? p?.category ?? p?.sector ?? p?.label ?? '').trim();
+    const value = parseNumber(p?.value ?? p?.amount ?? p?.emissions ?? p?.co2);
     return { name, value };
   });
 
-  const filtered: { name: string; value: number }[] = normalized
-    .map(({ name, value }): { name: string; value: number } => {
-      const parts: string[] = name
-        .split(' - ')
-        .map((s: string) => s.trim())
-        .filter(Boolean);
-
-      const withoutTotals: string[] = parts.filter((part: string) => !/^total$/i.test(part));
-      const pretty: string = withoutTotals.length ? withoutTotals.join(' - ') : name;
-
+  const filtered = normalized
+    .map(({ name, value }) => {
+      const parts: string[] = name.split(' - ').map((s) => s.trim()).filter(Boolean);
+      const withoutTotals = parts.filter((part) => !/^total$/i.test(part));
+      const pretty = withoutTotals.length ? withoutTotals.join(' - ') : name;
       return { name: pretty, value };
     })
-    .filter((d): d is { name: string; value: number } => d.name.length > 0 && Number.isFinite(d.value) && d.value > 0);
+    .filter((d) => d.name.length > 0 && Number.isFinite(d.value) && d.value > 0);
 
   const agg = new Map<string, number>();
-  for (const { name, value } of filtered) {
-    agg.set(name, (agg.get(name) || 0) + value);
-  }
+  for (const { name, value } of filtered) agg.set(name, (agg.get(name) || 0) + value);
 
   return Array.from(agg.entries())
     .map(([name, value]) => ({ name, value }))
@@ -82,7 +74,7 @@ function toBarSeries(raw: unknown[]): { name: string; value: number }[] {
     .slice(0, 10);
 }
 
-/* ---------------- panel shell (local) ---------------- */
+/* ---------------- panel shell ---------------- */
 const Panel: React.FC<React.PropsWithChildren<{
   title?: string; subtitle?: string; actions?: React.ReactNode; minHeight?: number;
 }>> = ({ title, subtitle, actions, children, minHeight }) => (
@@ -112,16 +104,16 @@ const Panel: React.FC<React.PropsWithChildren<{
 );
 
 /* ---------------- component ---------------- */
-type EmissionsPanelProps = {
-  disabled?: boolean;
-};
+type EmissionsPanelProps = { disabled?: boolean };
 
 const EmissionsPanel: React.FC<EmissionsPanelProps> = ({ disabled }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const [emissionCategories, setEmissionCategories] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('Power stations - coal');
+  const [showAllCats, setShowAllCats] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>(''); // choose default after load
+  const [selectOpen, setSelectOpen] = useState(false);
 
   const [lineData, setLineData] = useState<LinePoint[]>([]);
   const [pieData, setPieData] = useState<PiePoint[]>([]);
@@ -145,116 +137,27 @@ const EmissionsPanel: React.FC<EmissionsPanelProps> = ({ disabled }) => {
     catsAbortRef.current = ac;
 
     (async () => {
-      const t0 = performance.now();
       try {
         setLoadingCats(true);
         const res = await api.get('/api/ukgas/categories', { signal: ac.signal as any });
-        console.groupCollapsed('[ukgas/categories] ✔ success');
-        console.log('count:', Array.isArray(res) ? (res as any).length : Array.isArray((res as any)?.data) ? (res as any).data.length : 0);
-        console.log('time(ms):', Math.round(performance.now() - t0));
-        console.groupEnd();
         const data = (res as any)?.data ?? res;
-        setEmissionCategories(Array.isArray(data) ? data : []);
+        const cats = Array.isArray(data) ? data : [];
+        setEmissionCategories(cats);
+        // set default if none selected or invalid
+        if (!selectedCategory || (selectedCategory && !cats.includes(selectedCategory))) {
+          setSelectedCategory(cats[0] ?? '');
+        }
         categoriesLoadedRef.current = true;
-      } catch (err: any) {
-        console.groupCollapsed('[ukgas/categories] ✖ error');
-        console.error(err?.message || err);
-        console.groupEnd();
       } finally {
         setLoadingCats(false);
       }
     })();
 
     return () => ac.abort();
-  }, [disabled]);
+  }, [disabled]); // intentionally ignoring selectedCategory to avoid loops
 
-  /* -------- charts data (timeseries + latest breakdown) -------- */
-  useEffect(() => {
-    if (disabled || !selectedCategory) return;
-    dataAbortRef.current?.abort();
-    const ac = new AbortController();
-    dataAbortRef.current = ac;
-
-    (async () => {
-      // timeseries by category
-      try {
-        const cached = lineCacheRef.current.get(selectedCategory);
-        if (cached) {
-          console.groupCollapsed('[ukgas/:category] cache hit');
-          console.log('category:', selectedCategory, 'points:', cached.length);
-          console.groupEnd();
-          setLineData(cached);
-        } else {
-          setLoadingLine(true);
-          const res = await api.get(`/api/ukgas/${encodeURIComponent(selectedCategory)}`, { signal: ac.signal as any });
-          const arr = Array.isArray((res as any)) ? (res as any) : (res as any)?.data || [];
-          const line: LinePoint[] = (arr || [])
-            .filter((d: any) => !isNaN(Number(d.year)))
-            .map((d: any) => ({ year: String(d.year), value: Number(d.value) }));
-          console.groupCollapsed('[ukgas/:category] ✔ success');
-          console.log('category:', selectedCategory);
-          console.log('mapped points:', line.length);
-          console.groupEnd();
-          lineCacheRef.current.set(selectedCategory, line);
-          setLineData(line);
-          setLoadingLine(false);
-        }
-      } catch (err: any) {
-        console.groupCollapsed('[ukgas/:category] ✖ error');
-        console.error('category:', selectedCategory, err?.message || err);
-        console.groupEnd();
-        setLoadingLine(false);
-      }
-
-      // latest breakdown (bar)
-      try {
-        if (pieCacheRef.current) {
-          console.groupCollapsed('[ukgas/latest-breakdown] cache hit');
-          console.log('rows:', pieCacheRef.current.length);
-          console.groupEnd();
-          setPieData(pieCacheRef.current);
-        } else {
-          setLoadingPie(true);
-          const res2 = await api.get('/api/ukgas/latest-breakdown', { signal: ac.signal as any });
-          const raw = (res2 as any)?.data ?? res2;
-          const arr = Array.isArray(raw) ? raw : [];
-          console.groupCollapsed('[ukgas/latest-breakdown] ✔ success');
-          console.log('raw count:', arr.length);
-          console.groupEnd();
-
-          const pieRaw: PiePoint[] = arr.map((p: any) => ({
-            name: (p?.name ?? p?.category ?? p?.sector ?? p?.label ?? '').toString().trim(),
-            value: parseNumber(p?.value ?? p?.amount ?? p?.emissions ?? p?.co2),
-          }));
-
-          pieCacheRef.current = pieRaw;
-          setPieData(pieRaw);
-          setLoadingPie(false);
-
-          const nonZero = pieRaw.filter(d => d.value > 0);
-          if (pieRaw.length === 0) {
-            console.warn('[ukgas/latest-breakdown] Empty array returned from API.');
-            if (!builtFallbackRef.current) {
-              builtFallbackRef.current = true;
-              await buildClientFallbackBreakdown(ac.signal);
-            }
-          } else if (nonZero.length === 0) {
-            console.warn('[ukgas/latest-breakdown] All values are zero/non-numeric after parsing.');
-          }
-        }
-      } catch (err: any) {
-        console.groupCollapsed('[ukgas/latest-breakdown] ✖ error');
-        console.error(err?.message || err);
-        console.groupEnd();
-        setLoadingPie(false);
-      }
-    })();
-
-    return () => ac.abort();
-  }, [disabled, selectedCategory]);
-
-  // Build a latest-year breakdown by fetching each category's series and taking the last non-null value.
-  const buildClientFallbackBreakdown = async (signal?: AbortSignal) => {
+  /* -------- fallback builder (memoized) -------- */
+  const buildClientFallbackBreakdown = useCallback(async (signal?: AbortSignal) => {
     try {
       const catsRes = emissionCategories.length
         ? emissionCategories
@@ -271,57 +174,215 @@ const EmissionsPanel: React.FC<EmissionsPanelProps> = ({ disabled }) => {
         return 0;
       };
 
-      console.groupCollapsed('[fallback] building latest-year breakdown');
-      console.log('categories used:', LIMIT);
-
       for (let i = 0; i < LIMIT; i++) {
         const cat = String(catsRes[i]);
         try {
-          const res = await api.get(`/api/ukgas/${encodeURIComponent(cat)}`, { signal } as any);
+          const url = '/api/ukgas/' + encodeURIComponent(cat);
+          const res = await api.get(url, { signal } as any);
           const series = Array.isArray((res as any)) ? (res as any) : (res as any)?.data || [];
           const v = pickLast(series);
           if (v > 0) out.push({ name: cat, value: v });
-        } catch (e: any) {
-          console.warn('[fallback] failed category:', cat, e?.message || e);
+        } catch {
+          // silent
         }
       }
 
       out.sort((a, b) => b.value - a.value);
       const top = out.slice(0, 10);
-      console.table(top);
-      console.groupEnd();
-
       pieCacheRef.current = top;
       setPieData(top);
-    } catch (e: any) {
-      console.error('[fallback] failed to build breakdown:', e?.message || e);
+    } catch {
+      // silent
     }
-  };
+  }, [emissionCategories]);
+
+  /* -------- charts data -------- */
+  useEffect(() => {
+    if (disabled || !selectedCategory) return;
+    dataAbortRef.current?.abort();
+    const ac = new AbortController();
+    dataAbortRef.current = ac;
+
+    (async () => {
+      // timeseries
+      try {
+        const cached = lineCacheRef.current.get(selectedCategory);
+        if (cached) {
+          setLineData(cached);
+        } else {
+          setLoadingLine(true);
+          const url = '/api/ukgas/' + encodeURIComponent(selectedCategory);
+          const res = await api.get(url, { signal: ac.signal as any });
+          const arr = Array.isArray((res as any)) ? (res as any) : (res as any)?.data || [];
+          const line: LinePoint[] = (arr || [])
+            .filter((d: any) => !isNaN(Number(d.year)))
+            .map((d: any) => ({ year: String(d.year), value: Number(d.value) }));
+          lineCacheRef.current.set(selectedCategory, line);
+          setLineData(line);
+          setLoadingLine(false);
+        }
+      } catch {
+        setLoadingLine(false);
+      }
+
+      // latest breakdown (bar)
+      try {
+        if (pieCacheRef.current) {
+          setPieData(pieCacheRef.current);
+        } else {
+          setLoadingPie(true);
+          const res2 = await api.get('/api/ukgas/latest-breakdown', { signal: ac.signal as any });
+          const raw = (res2 as any)?.data ?? res2;
+          const arr = Array.isArray(raw) ? raw : [];
+
+          const pieRaw: PiePoint[] = arr.map((p: any) => ({
+            name: (p?.name ?? p?.category ?? p?.sector ?? p?.label ?? '').toString().trim(),
+            value: parseNumber(p?.value ?? p?.amount ?? p?.emissions ?? p?.co2),
+          }));
+
+          pieCacheRef.current = pieRaw;
+          setPieData(pieRaw);
+          setLoadingPie(false);
+
+          const nonZero = pieRaw.filter((d) => d.value > 0);
+          if (pieRaw.length === 0 && !builtFallbackRef.current) {
+            builtFallbackRef.current = true;
+            await buildClientFallbackBreakdown(ac.signal);
+          } else if (nonZero.length === 0) {
+            // keep silent; UI stays clean
+          }
+        }
+      } catch {
+        setLoadingPie(false);
+      }
+    })();
+
+    return () => ac.abort();
+  }, [disabled, selectedCategory, buildClientFallbackBreakdown]);
+
+  /* -------- category dropdown: top 5 + toggle -------- */
+  const moreSentinel = '__more__';
+  const lessSentinel = '__less__';
 
   const barSeries = useMemo(() => toBarSeries(pieData), [pieData]);
+
+  // Order categories by barSeries ranking, fallback alphabetical for the rest
+  const orderedCats = useMemo(() => {
+    if (barSeries.length === 0) return emissionCategories;
+    const order = new Map(barSeries.map((b, i) => [b.name, i]));
+    const scored = emissionCategories.map((c) => ({ c, s: order.has(c) ? (order.get(c) as number) : 9999 }));
+    return scored.sort((a, b) => a.s - b.s || a.c.localeCompare(b.c)).map((x) => x.c);
+  }, [emissionCategories, barSeries]);
+
+  const visibleCats = useMemo(
+    () => {
+      const base = showAllCats ? orderedCats : orderedCats.slice(0, 5);
+      // Ensure current selection is present even if not in top-5
+      if (selectedCategory && !base.includes(selectedCategory) && orderedCats.includes(selectedCategory)) {
+        return [selectedCategory, ...base];
+      }
+      return base;
+    },
+    [orderedCats, showAllCats, selectedCategory]
+  );
+
+  const handleCategoryChange = (value: string) => {
+    if (value === moreSentinel) {
+      setShowAllCats(true);
+      // reopen the menu so user sees the expanded list immediately
+      setTimeout(() => setSelectOpen(true), 0);
+      return;
+    }
+    if (value === lessSentinel) {
+      setShowAllCats(false);
+      setTimeout(() => setSelectOpen(true), 0);
+      return;
+    }
+    setSelectedCategory(value);
+  };
+
   const isBarEmpty = barSeries.length === 0;
 
   return (
     <Stack spacing={2}>
       <Panel
         title="Emissions by Year"
-        subtitle={selectedCategory}
+        subtitle={selectedCategory || 'Select a category'}
         actions={
           <Stack direction="row" spacing={1} alignItems="center">
-            <FormControl size="small" sx={{ minWidth: 240 }}>
+            <FormControl
+              size="small"
+              sx={{
+                minWidth: 240,
+                '& .MuiOutlinedInput-root': {
+                  bgcolor: '#f0f8e0',
+                  '& fieldset': { borderColor: 'rgba(117,183,141,0.35)' },
+                  '&:hover fieldset': { borderColor: 'rgba(46,125,50,0.55)' },
+                  '&.Mui-focused fieldset': { borderColor: 'rgba(46,125,50,0.9)' },
+                },
+              }}
+            >
               <InputLabel id="category-label">Emission Category</InputLabel>
               <Select
                 labelId="category-label"
                 value={selectedCategory}
                 label="Emission Category"
-                onChange={(e) => setSelectedCategory(e.target.value as string)}
+                open={selectOpen}
+                onOpen={() => setSelectOpen(true)}
+                onClose={() => setSelectOpen(false)}
+                onChange={(e) => handleCategoryChange(e.target.value as string)}
                 disabled={disabled || loadingCats}
+                displayEmpty
+                renderValue={(val) =>
+                  val ? String(val) : <span style={{ color: '#888' }}>Select a category</span>
+                }
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      bgcolor: '#f0f8e0',
+                      border: '1px solid rgba(117,183,141,0.35)',
+                      boxShadow: '0 12px 28px rgba(46,125,50,0.12)',
+                      '& .MuiMenuItem-root': {
+                        '&:hover': { bgcolor: 'rgba(129,199,132,0.25)' },
+                        '&.Mui-selected': { bgcolor: 'rgba(76,175,80,0.22)' },
+                      },
+                    },
+                  },
+                }}
               >
-                {loadingCats
-                  ? <MenuItem value=""><em>Loading…</em></MenuItem>
-                  : emissionCategories.map((cat, idx) => (<MenuItem key={idx} value={cat}>{cat}</MenuItem>))}
+                {loadingCats && <MenuItem value=""><em>Loading…</em></MenuItem>}
+
+                {/* keep current selection visible at the top if it's outside the visible slice */}
+                {selectedCategory &&
+                  !visibleCats.includes(selectedCategory) &&
+                  orderedCats.includes(selectedCategory) && (
+                    <MenuItem value={selectedCategory}>{selectedCategory}</MenuItem>
+                )}
+
+                {!loadingCats && visibleCats.map((cat) => (
+                  <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                ))}
+
+                {!loadingCats && orderedCats.length > 5 && !showAllCats && (
+                  <>
+                    <MuiDivider />
+                    <MenuItem value={moreSentinel} sx={{ fontWeight: 700, color: 'success.main' }}>
+                      Show more…
+                    </MenuItem>
+                  </>
+                )}
+
+                {!loadingCats && orderedCats.length > 5 && showAllCats && (
+                  <>
+                    <MuiDivider />
+                    <MenuItem value={lessSentinel} sx={{ fontWeight: 700, color: 'success.main' }}>
+                      Show less
+                    </MenuItem>
+                  </>
+                )}
               </Select>
             </FormControl>
+
             <MuiTooltip title="Refresh categories & data">
               <span>
                 <Button
@@ -336,7 +397,12 @@ const EmissionsPanel: React.FC<EmissionsPanelProps> = ({ disabled }) => {
                     pieCacheRef.current = null;
                     lineCacheRef.current.clear();
                     builtFallbackRef.current = false;
-                    setSelectedCategory((s) => s);
+                    setShowAllCats(false);
+                    setSelectOpen(false);
+                    // re-pick default after reload
+                    setSelectedCategory('');
+                    // trigger effects by toggling a noop—category effect will run once cats load
+                    setEmissionCategories((x) => [...x]);
                   }}
                 >
                   Refresh
@@ -379,10 +445,7 @@ const EmissionsPanel: React.FC<EmissionsPanelProps> = ({ disabled }) => {
             <Box sx={{ display: 'grid', placeItems: 'center', gap: 1 }}>
               <Atom color="#32cd32" size="medium" text="" textColor="" />
               <Typography variant="body2" color="text.secondary">
-                No data available for the latest year. Rebuilding from category series…
-              </Typography>
-              <Typography variant="caption" color="text.disabled">
-                Check Console for <strong>[fallback]</strong> logs if this persists.
+                Building view…
               </Typography>
             </Box>
           </Box>
@@ -392,12 +455,7 @@ const EmissionsPanel: React.FC<EmissionsPanelProps> = ({ disabled }) => {
               <BarChart data={barSeries} layout="vertical" margin={{ top: 8, right: 12, bottom: 8, left: 12 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" />
-                <YAxis
-                  dataKey="name"
-                  type="category"
-                  width={isMobile ? 120 : 220}
-                  tick={{ fontSize: 12 }}
-                />
+                <YAxis dataKey="name" type="category" width={isMobile ? 120 : 220} tick={{ fontSize: 12 }} />
                 <ReTooltip />
                 <Legend />
                 <Bar dataKey="value" radius={[4, 4, 4, 4]}>

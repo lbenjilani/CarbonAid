@@ -7,13 +7,11 @@ import axios, {
   AxiosHeaders,
 } from 'axios';
 
-/** ===== Config ===== */
 const API_BASE_URL = (process.env.REACT_APP_API_BASE ?? 'http://localhost:3001').replace(/\/$/, '');
 const DEFAULT_TIMEOUT_MS = 35_000;
 const RETRY_STATUS = new Set([429, 502, 503, 504]);
-const MAX_RETRIES = 2; // total attempts = MAX_RETRIES + 1
+const MAX_RETRIES = 2;
 
-/** ===== Utilities ===== */
 const isBrowser = typeof window !== 'undefined';
 
 const getToken = (): string | null => {
@@ -31,19 +29,24 @@ const randomId = (): string => {
     window.crypto.getRandomValues(buf);
     return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
   }
-  // Node/legacy fallback
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Normalize any Axios error into a concise, readable message */
+/** Public helper so components can ignore canceled errors if they want */
+export const isCanceledError = (err: unknown): boolean => {
+  const ax = err as AxiosError & { code?: string; __CANCEL__?: boolean };
+  return !!(axios.isCancel?.(ax) || ax?.code === 'ERR_CANCELED' || (ax as any)?.message === 'canceled' || ax?.__CANCEL__);
+};
+
 export const toReadableError = (err: unknown): string => {
   const ax = err as AxiosError<any>;
   const data = ax?.response?.data;
   const status = ax?.response?.status;
 
   return (
+    (isCanceledError(err) ? 'Request canceled' : null) ||
     data?.error ||
     data?.message ||
     (typeof data === 'string' ? data : null) ||
@@ -52,20 +55,13 @@ export const toReadableError = (err: unknown): string => {
   );
 };
 
-/** ===== Axios Instance ===== */
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: DEFAULT_TIMEOUT_MS,
   headers: { 'Content-Type': 'application/json' },
-  // withCredentials: true, // enable if using cookies across origins
 });
 
-/** ===== Request Interceptor =====
- * - Injects Bearer token (if present)
- * - Adds idempotency key for non-GET requests
- */
 api.interceptors.request.use((config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
-  // Auth token
   const token = getToken();
   if (token) {
     const headers = config.headers ?? new AxiosHeaders();
@@ -78,7 +74,6 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig): InternalAxios
     }
   }
 
-  // Idempotency / request correlation for non-GET
   if (config.method && config.method.toUpperCase() !== 'GET') {
     const headers = config.headers ?? new AxiosHeaders();
     const key = randomId();
@@ -90,48 +85,49 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig): InternalAxios
     config.headers = headers;
   }
 
-  // Track retries
   (config as any).__retryCount ??= 0;
-
   return config;
 });
 
-/** ===== Response Interceptor with Exponential Backoff =====
- * Retries 429/502/503/504 with jittered backoff.
- */
 api.interceptors.response.use(
   (res: AxiosResponse) => res,
   async (error: AxiosError) => {
+    // 👉 Treat cancellations as benign: resolve with a never-settling promise
+    // so the awaiting call doesn’t throw and React’s overlay stays quiet.
+    if (isCanceledError(error)) {
+      return new Promise<never>(() => {});
+    }
+
     const config = error.config as (InternalAxiosRequestConfig & { __retryCount?: number }) | undefined;
     const status = error.response?.status;
 
-    // Short-circuit for offline browsers
     if (isBrowser && 'onLine' in navigator && !navigator.onLine) {
       return Promise.reject(error);
     }
 
-    // Retry iff: we have a config, status is retryable, and we haven't exceeded retries
     if (config && status && RETRY_STATUS.has(status) && (config.__retryCount ?? 0) < MAX_RETRIES) {
       config.__retryCount = (config.__retryCount ?? 0) + 1;
-      const base = 300 * Math.pow(2, config.__retryCount - 1); // 300ms, 600ms, ...
-      const jitter = Math.floor(Math.random() * 120); // up to +120ms
+      const base = 300 * Math.pow(2, config.__retryCount - 1);
+      const jitter = Math.floor(Math.random() * 120);
       await sleep(base + jitter);
       return api.request(config);
     }
 
-    // Attach a normalized message for consumers who want a single string
     (error as any).normalizedMessage = toReadableError(error);
     return Promise.reject(error);
   }
 );
 
-/** ===== Strongly-Typed Helpers (optional, ergonomic) ===== */
+/** Ergonomic helpers that normalize errors (and also ignore cancellations) */
 export async function http<T>(p: Promise<AxiosResponse<T>>): Promise<T> {
   try {
     const res = await p;
     return res.data;
   } catch (err) {
-    // Always throw a readable Error with message
+    if (isCanceledError(err)) {
+      // Return a never-resolving promise so upstream awaits don’t throw.
+      return new Promise<T>(() => {});
+    }
     const msg = toReadableError(err);
     throw new Error(msg);
   }
@@ -152,5 +148,4 @@ export const patch = <T>(url: string, body?: any) =>
 export const del = <T>(url: string) =>
   http<T>(api.delete<T>(url));
 
-/** Export the raw instance when you need full control */
 export default api;
