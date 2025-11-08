@@ -23,6 +23,7 @@ import {
   Tooltip as ReTooltip, ResponsiveContainer, ReferenceLine,
   BarChart, Bar, Cell, Legend,
 } from 'recharts';
+import { Atom } from 'react-loading-indicators';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import api from '../services/api';
@@ -33,7 +34,7 @@ interface PiePoint { name: string; value: number; }
 const DEV_USER_ID = (process.env.REACT_APP_DEV_USER_ID || '66e000000000000000000001').trim();
 
 const colorPalette = [
-  '#2e7d32', '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
+  '#2e7d32', '#1f77b4', '#ff7f0e', '#d62728',
   '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
   '#17becf', '#66bb6a', '#43a047', '#81c784', '#9ccc65',
 ];
@@ -175,7 +176,7 @@ const EmissionsPanel: React.FC<EmissionsPanelProps> = ({ disabled }) => {
     dataAbortRef.current = ac;
 
     (async () => {
-      /* timeseries by category */
+      // timeseries by category
       try {
         const cached = lineCacheRef.current.get(selectedCategory);
         if (cached) {
@@ -205,7 +206,7 @@ const EmissionsPanel: React.FC<EmissionsPanelProps> = ({ disabled }) => {
         setLoadingLine(false);
       }
 
-      /* latest breakdown (bar) */
+      // latest breakdown (bar)
       try {
         if (pieCacheRef.current) {
           console.groupCollapsed('[ukgas/latest-breakdown] cache hit');
@@ -335,7 +336,6 @@ const EmissionsPanel: React.FC<EmissionsPanelProps> = ({ disabled }) => {
                     pieCacheRef.current = null;
                     lineCacheRef.current.clear();
                     builtFallbackRef.current = false;
-                    // trigger effects
                     setSelectedCategory((s) => s);
                   }}
                 >
@@ -372,13 +372,19 @@ const EmissionsPanel: React.FC<EmissionsPanelProps> = ({ disabled }) => {
               height: 360,
               display: 'grid',
               placeItems: 'center',
-              color: 'text.secondary',
-              fontSize: 14,
               px: 2,
               textAlign: 'center',
             }}
           >
-            No data available for the latest year. We attempted a client-side rebuild; check Console for [fallback] logs.
+            <Box sx={{ display: 'grid', placeItems: 'center', gap: 1 }}>
+              <Atom color="#32cd32" size="medium" text="" textColor="" />
+              <Typography variant="body2" color="text.secondary">
+                No data available for the latest year. Rebuilding from category series…
+              </Typography>
+              <Typography variant="caption" color="text.disabled">
+                Check Console for <strong>[fallback]</strong> logs if this persists.
+              </Typography>
+            </Box>
           </Box>
         ) : (
           <Box sx={{ height: 360 }}>
