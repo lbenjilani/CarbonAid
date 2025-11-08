@@ -6,10 +6,11 @@ import mongoose from 'mongoose';
 import { connectDB } from './db/db';
 
 import userRoutes from './routes/userRoutes';
-import authRoutes from './routes/authRoutes';       // <-- make sure this file exists
+import authRoutes from './routes/authRoutes';
 import ukGasRoutes from './routes/ukGasRoutes';
 import quizRoutes from './routes/quizRoutes';
 import chatRoutes from './routes/chatRoutes';
+import taskRoutes from './routes/taskRoutes';
 import aiSuggestionRoutes from './routes/aiSuggestionRoutes';
 
 const app: Application = express();
@@ -67,10 +68,11 @@ app.post('/api/model', async (req: Request, res: Response): Promise<void> => {
 
 // ----- Feature routes -----
 app.use('/api', userRoutes);
-app.use('/api', authRoutes);              // => /api/auth/* after fix below
+app.use('/api', authRoutes);
 app.use('/api', ukGasRoutes);
 app.use('/api/quiz', quizRoutes);
 app.use('/chat', chatRoutes);
+app.use('/api/tasks', taskRoutes);
 app.use('/api/ai-suggestions', aiSuggestionRoutes);
 
 // ----- 404 -----

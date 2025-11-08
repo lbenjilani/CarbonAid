@@ -1,4 +1,3 @@
-// src/pages/Task.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -18,6 +17,7 @@ import {
   Tooltip,
   Divider,
   Alert,
+  TextField,
 } from '@mui/material';
 import type { TypographyProps } from '@mui/material/Typography';
 import Header from '../components/Header';
@@ -34,13 +34,18 @@ type Suggestion = {
   cost: string;
 };
 
+type TaskStatus = 'Added' | 'TODO' | 'Completed';
+type TaskType = 'AI generated' | 'Manual input';
+
 type TaskItem = {
-  id: string;
+  _id?: string;                  // server subdoc id
+  id: string;                    // stable client id for rendering
   title: string;
   details?: string;
   cadence: 'daily' | 'monthly' | 'yearly';
-  completed: boolean;
-  source?: 'ai' | 'user';
+  status: TaskStatus;            // replaces 'completed'
+  type: TaskType;                // replaces 'source'
+  completedAt?: string | null;
   meta?: Partial<Suggestion>;
 };
 
@@ -76,7 +81,7 @@ const makeId = (prefix: string) =>
 function useLocalTasksFallback() {
   const load = useCallback((): TaskItem[] => {
     try {
-      const raw = localStorage.getItem('tasks');
+      const raw = localStorage.getItem('tasks.v2');   // v2 to avoid old shape collisions
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
@@ -85,7 +90,7 @@ function useLocalTasksFallback() {
 
   const save = useCallback((tasks: TaskItem[]) => {
     try {
-      localStorage.setItem('tasks', JSON.stringify(tasks));
+      localStorage.setItem('tasks.v2', JSON.stringify(tasks));
     } catch {
       /* noop */
     }
@@ -132,7 +137,7 @@ const TruncatableText: React.FC<{
 const BucketColumn: React.FC<{
   title: string;
   items: TaskItem[];
-  onToggle: (id: string) => void;
+  onToggle: (id: string) => void;        // toggles Completed status
   onRemove: (id: string) => void;
   onAddQuick: (title: string) => void;
 }> = ({ title, items, onToggle, onRemove, onAddQuick }) => {
@@ -189,7 +194,7 @@ const BucketColumn: React.FC<{
             >
               <ListItemIcon sx={{ minWidth: 40 }}>
                 <Checkbox
-                  checked={task.completed}
+                  checked={task.status === 'Completed'}
                   onChange={() => onToggle(task.id)}
                   sx={{ color: '#66bb6a' }}
                   inputProps={{ 'aria-label': `Toggle ${task.title}` }}
@@ -205,6 +210,21 @@ const BucketColumn: React.FC<{
                         {task.title}
                       </TruncatableText>
                     </Box>
+
+                    {/* Type & Status chips */}
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={task.type}
+                      sx={{ borderColor: '#81c784' }}
+                    />
+                    <Chip
+                      size="small"
+                      color={task.status === 'Completed' ? 'success' : task.status === 'TODO' ? 'warning' : 'default'}
+                      label={task.status}
+                    />
+
+                    {/* Impact (AI meta) */}
                     {badge && (
                       <Chip
                         size="small"
@@ -270,17 +290,32 @@ const Task: React.FC = () => {
   const [aiTips, setAiTips] = useState<Suggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // Optional free-form add
+  const [quickTitle, setQuickTitle] = useState('');
+  const [freeCadence, setFreeCadence] = useState<TaskItem['cadence']>('daily');
+
   // Load tasks once
   useEffect(() => {
     (async () => {
       setLoading(true);
       setError(null);
       try {
-        // const res = await api.get('/api/tasks', { headers: { 'x-user-id': DEV_USER_ID } });
-        // setTasks(res.data || []);
-        setTasks(loadLocal());
+        const res = await api.get('/api/tasks', { headers: { 'x-user-id': DEV_USER_ID } });
+        const serverTasks: any[] = res.data || [];
+        const mapped: TaskItem[] = serverTasks.map((t) => ({
+          _id: t._id,
+          id: t._id || makeId('srv'),
+          title: t.title,
+          details: t.details || '',
+          cadence: t.cadence,
+          status: t.status,
+          type: t.type,
+          completedAt: t.completedAt || null,
+          meta: t.meta || undefined,
+        }));
+        setTasks(mapped);
       } catch (e: any) {
-        console.error('load tasks failed:', e);
+        console.error('load tasks failed:', e?.message);
         setTasks(loadLocal());
       } finally {
         setLoading(false);
@@ -327,7 +362,17 @@ const Task: React.FC = () => {
   }, []);
 
   const toggleTask = useCallback((id: string) => {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)));
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        const next: TaskStatus = t.status === 'Completed' ? 'Added' : 'Completed';
+        return {
+          ...t,
+          status: next,
+          completedAt: next === 'Completed' ? new Date().toISOString() : null,
+        };
+      })
+    );
   }, []);
 
   const addQuick = useCallback(
@@ -339,8 +384,9 @@ const Task: React.FC = () => {
         title,
         details: '',
         cadence,
-        completed: false,
-        source: 'user',
+        status: 'Added',
+        type: 'Manual input',
+        completedAt: null,
       });
       // Quick-add doesn't come from suggestions, so nothing to remove from aiTips
     },
@@ -362,9 +408,10 @@ const Task: React.FC = () => {
         title,
         details: tip.how || tip.why || '',
         cadence: guessCadence(tip),
-        completed: false,
-        source: 'ai',
+        status: 'Added',
+        type: 'AI generated',
         meta: tip,
+        completedAt: null,
       });
       setAiTips((prev) => prev.filter((x) => normalizeTitle(x.title) !== key));
     },
@@ -379,14 +426,10 @@ const Task: React.FC = () => {
 
     for (const tip of aiTips) {
       const key = normalizeTitle(tip.title || '');
-      if (!key || taskTitleSet.has(key)) {
-        // already exists in tasks → do not keep in suggestions
-        continue;
-      }
+      if (!key || taskTitleSet.has(key)) continue;
       toAdd.push(tip);
     }
 
-    // Add all new (unique) suggestions at once
     if (toAdd.length) {
       setTasks((prev) => {
         const names = new Set(prev.map((t) => normalizeTitle(t.title)));
@@ -400,9 +443,10 @@ const Task: React.FC = () => {
               title,
               details: tip.how || tip.why || '',
               cadence: guessCadence(tip),
-              completed: false,
-              source: 'ai',
+              status: 'Added',
+              type: 'AI generated',
               meta: tip,
+              completedAt: null,
             });
             names.add(key);
           }
@@ -411,14 +455,9 @@ const Task: React.FC = () => {
       });
     }
 
-    // Remove all that were added (and any that were already duplicates)
     for (const tip of aiTips) {
       const key = normalizeTitle(tip.title || '');
-      if (!key || taskTitleSet.has(key)) {
-        // already duplicated → drop
-        continue;
-      }
-      // if it was added, drop; otherwise keep
+      if (!key || taskTitleSet.has(key)) continue;
       if (!toAdd.find((t) => normalizeTitle(t.title || '') === key)) {
         keep.push(tip);
       }
@@ -430,15 +469,44 @@ const Task: React.FC = () => {
     setSaving(true);
     setError(null);
     try {
-      // await api.post('/api/tasks/bulk', { tasks }, { headers: { 'x-user-id': DEV_USER_ID } });
-      saveLocal(tasks);
+      const payload = tasks.map((t) => ({
+        _id: t._id, // keep if exists so server won't create a new one
+        title: t.title,
+        details: t.details || '',
+        cadence: t.cadence,
+        status: t.status,
+        type: t.type,
+        meta: t.meta || {},
+        completedAt: t.completedAt || null,
+      }));
+
+      const res = await api.post(
+        '/api/tasks/bulk',
+        { tasks: payload },
+        { headers: { 'x-user-id': DEV_USER_ID } }
+      );
+
+      const mapped: TaskItem[] = (res.data || []).map((t: any) => ({
+        _id: t._id,
+        id: t._id || makeId('srv'),
+        title: t.title,
+        details: t.details || '',
+        cadence: t.cadence,
+        status: t.status,
+        type: t.type,
+        completedAt: t.completedAt || null,
+        meta: t.meta || undefined,
+      }));
+
+      setTasks(mapped);
+      saveLocal(mapped);
     } catch (e: any) {
-      setError(e?.normalizedMessage || 'Failed to save tasks; saved locally instead.');
+      setError(e?.response?.data?.message || e?.message || 'Failed to save; saved locally instead.');
       saveLocal(tasks);
     } finally {
       setSaving(false);
     }
-  }, [saveLocal, tasks]);
+  }, [tasks, saveLocal]);
 
   // Filter suggestions live so the UI never shows items already in tasks
   const filteredSuggestions = useMemo(() => {
@@ -479,7 +547,7 @@ const Task: React.FC = () => {
         </Box>
 
         <Alert severity="info" sx={{ mt: 2, mb: 1 }}>
-          Suggestions you add move into your goals and are removed from the list automatically. Duplicates are prevented.
+          Status tracks your progress: Added → TODO → Completed. AI items are labeled “AI generated”; your items are “Manual input”.
         </Alert>
 
         {error && (
@@ -487,6 +555,39 @@ const Task: React.FC = () => {
             {error}
           </Alert>
         )}
+
+        {/* Quick free-form add */}
+        <Box display="flex" gap={1} alignItems="center" mt={1} flexWrap="wrap">
+          <TextField
+            size="small"
+            label="Quick task"
+            value={quickTitle}
+            onChange={(e) => setQuickTitle(e.target.value)}
+          />
+          <TextField
+            size="small"
+            select
+            SelectProps={{ native: true }}
+            label="Cadence"
+            value={freeCadence}
+            onChange={(e) => setFreeCadence(e.target.value as TaskItem['cadence'])}
+          >
+            <option value="daily">daily</option>
+            <option value="monthly">monthly</option>
+            <option value="yearly">yearly</option>
+          </TextField>
+          <Button
+            variant="contained"
+            onClick={() => {
+              const t = quickTitle.trim();
+              if (!t) return;
+              addQuick(freeCadence, t);
+              setQuickTitle('');
+            }}
+          >
+            Add
+          </Button>
+        </Box>
 
         {/* Buckets */}
         <Stack direction={isMobile ? 'column' : 'row'} spacing={3} mt={2} mb={5} sx={{ minWidth: 0 }}>
